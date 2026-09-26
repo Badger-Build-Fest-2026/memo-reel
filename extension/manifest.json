@@ -1,0 +1,19 @@
+{
+  "name": "RecallGraph",
+  "description": "Sends the current page URL and a unique user ID to a FastAPI backend.",
+  "version": "1.0",
+  "manifest_version": 3,
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "Hi.png"
+  },
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "https://www.instagram.com/*"
+  ]
+}
