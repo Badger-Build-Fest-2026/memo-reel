@@ -6,7 +6,7 @@ logger = logging.getLogger("app.worker.local_errors")
 
 
 def log_worker_error(event: str, capture_id: str, error: Exception) -> None:
-    log_path = Path(os.getenv("WORKER_ERROR_LOG", "worker-errors.log"))
+    log_path = Path(os.getenv("WORKER_ERROR_LOG", "watchlogs/worker-errors.log"))
     log_path.parent.mkdir(parents=True, exist_ok=True)
     if not any(
         isinstance(handler, logging.FileHandler)

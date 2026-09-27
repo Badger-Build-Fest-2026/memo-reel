@@ -7,9 +7,9 @@ x-app: &app
     - .env
   environment:
     REDIS_URL: redis://redis:6379/0
-    WORKER_ERROR_LOG: /app/logs/worker-errors.log
+    WORKER_ERROR_LOG: /app/watchlogs/worker-errors.log
   volumes:
-    - worker_logs:/app/logs
+    - worker_logs:/app/watchlogs
 
 services:
   redis:
