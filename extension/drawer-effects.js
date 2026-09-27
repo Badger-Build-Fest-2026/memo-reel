@@ -130,6 +130,10 @@ const RSDrawerEffects = (function () {
     if (state === "error") statusEl.classList.add("rs-error");
   }
 
+  function closeDrawer() {
+    rootEl.classList.remove("rs-open");
+  }
+
   function setButtonLoading(buttonEl, isLoading) {
     buttonEl.classList.toggle("rs-loading", isLoading);
     buttonEl.classList.toggle("rs-disabled", isLoading);
@@ -138,6 +142,7 @@ const RSDrawerEffects = (function () {
   return {
     init,
     setStatus,
+    closeDrawer,
     setButtonLoading
   };
 })();

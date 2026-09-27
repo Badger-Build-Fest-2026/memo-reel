@@ -89,6 +89,7 @@ const RSReelActions = (function () {
       console.groupEnd();
 
       RSDrawerEffects.setStatus("Saved successfully!", "success");
+      RSDrawerEffects.closeDrawer();
     } catch (error) {
       console.error(error);
       RSDrawerEffects.setStatus(`Error: ${error.message}`, "error");
