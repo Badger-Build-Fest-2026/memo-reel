@@ -3,32 +3,27 @@
 // All logic that talks to the outside world: extracting reel
 // data from the page, sending it to your FastAPI backend, and
 // redirecting to your Streamlit dashboard.
-// This is the direct successor of the old popup.js logic, now
-// callable from the in-page drawer instead of the popup.
 // ---------------------------------------------------------
 
-const RS_BACKEND_URL = "https://recall-graph.onrender.com/";
+// const RS_BACKEND_URL = "https://recall-graph.onrender.com/api/v1/reels/submit";
+const RS_BACKEND_URL = "https://localhost:8000/api/v1/reels/submit";
 const RS_DASHBOARD_URL = "https://your-streamlit-app.streamlit.app"; // <-- set your real URL
 
 const RSReelActions = (function () {
-  async function getOrCreateUserId() {
-    const { userId } = await chrome.storage.local.get("userId");
-    if (userId) return userId;
-
-    const newId = crypto.randomUUID();
-    await chrome.storage.local.set({ userId: newId });
-    return newId;
+  function getOrCreateUserId() {
+    let userId = localStorage.getItem("rs_userId");
+    if (!userId) {
+      userId = crypto.randomUUID();
+      localStorage.setItem("rs_userId", userId);
+    }
+    return userId;
   }
 
-  function extractReelDataFromPage() {
-    // Runs in the same page context as content.js, so no need
-    // for chrome.scripting.executeScript / a separate injected
-    // file — we can call the extractor logic directly.
-    // Assumes reelExtractor.js exposes a global `extractReelData()`.
+  function extractReelDataFromPage(userId) {
     if (typeof extractReelData !== "function") {
       throw new Error("Reel extractor not available on this page.");
     }
-    return extractReelData();
+    return extractReelData(userId);
   }
 
   async function saveCurrentReel() {
@@ -38,39 +33,52 @@ const RSReelActions = (function () {
       RSDrawerEffects.setButtonLoading(saveBtn, true);
       RSDrawerEffects.setStatus("Extracting Reel...", null);
 
-      const reelUrl = window.location.href;
-
-      if (!reelUrl.includes("instagram.com")) {
+      if (!window.location.href.includes("instagram.com")) {
         throw new Error("Please open an Instagram Reel first.");
       }
 
-      const reelData = extractReelDataFromPage();
+      const userId = getOrCreateUserId();
+
+      const reelData = extractReelDataFromPage(userId);
       if (!reelData) {
         throw new Error("Could not extract Reel data.");
       }
 
-      const userId = await getOrCreateUserId();
-
       RSDrawerEffects.setStatus("Sending to server...", null);
+
+      // Convert array of hashtags to string to match backend schema (hashtags: str)
+      const payload = {
+        user_id: reelData.user_id,
+        account_name: reelData.account_name || "",
+        source_url: reelData.source_url,
+        hashtags: Array.isArray(reelData.hashtags) ? reelData.hashtags.join(" ") : "",
+        caption: reelData.caption || "",
+        requested_at: reelData.requested_at
+      };
 
       const response = await fetch(RS_BACKEND_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: userId,
-          reel_url: reelUrl,
-          account_name: reelData.account_name,
-          caption: reelData.caption,
-          hashtags: reelData.hashtags
-        })
+        body: JSON.stringify(payload)
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Server Error Detail:", errorText);
         throw new Error(`Server returned ${response.status}`);
       }
 
-      const data = await response.json();
-      console.log("Backend response:", data);
+      // ---------------------------------------------------------
+      // Read & console.log the response payload from FastAPI
+      // ---------------------------------------------------------
+      const responseData = await response.json();
+
+      console.group("%c[Reel Saver] Backend Response Accepted", "color: #0087ff; font-weight: bold;");
+      console.log("Capture ID:", responseData.capture_id);
+      console.log("Status:", responseData.status);
+      console.log("Job Status:", responseData.job_status);
+      console.log("Full Payload:", responseData);
+      console.groupEnd();
 
       RSDrawerEffects.setStatus("Saved successfully!", "success");
     } catch (error) {

@@ -1,25 +1,54 @@
 /**
  * Extract information from the Instagram Reel currently open
- * in the active Instagram tab.
+ * on the page, plus request metadata (reel URL, timestamp,
+ * and the caller-supplied userId).
+ *
+ * @param {string} userId - persistent per-install ID generated from localStorage
  *
  * Returns:
  * {
  *   account_name: string | null,
  *   caption: string | null,
- *   hashtags: string[]
+ *   hashtags: string[],
+ *   source_url: string,
+ *   user_id: string,
+ *   requested_at: string // ISO 8601
  * }
  */
-function extractReelData() {
+function extractReelData(userId) {
+  // System route names on Instagram to exclude when searching for user profile links
+  const SYSTEM_PATHS = new Set([
+    "",
+    "explore",
+    "reels",
+    "reel",
+    "stories",
+    "direct",
+    "p",
+    "tv",
+    "accounts",
+    "developer",
+    "about",
+    "privacy",
+    "terms"
+  ]);
+
+  // Helper to extract clean path from an href (removes query strings & leading/trailing slashes)
+  function getCleanPath(href) {
+    if (!href) return "";
+    return href
+      .split("?")[0]
+      .split("#")[0]
+      .replace(/^\/+|\/+$/g, "");
+  }
 
   // ------------------------------------------------------------
   // 1. Find the Reel link
   // ------------------------------------------------------------
 
-  const reelLink = Array.from(
-    document.querySelectorAll('a[href]')
-  ).find(link => {
+  const reelLink = Array.from(document.querySelectorAll("a[href]")).find(link => {
     const href = link.getAttribute("href");
-    return href && /^\/[^/]+\/reel\/[^/]+\/?$/.test(href);
+    return href && /^\/[^/]+\/(?:reels?)\/[^/]+\/?/.test(href);
   });
 
   // ------------------------------------------------------------
@@ -31,16 +60,17 @@ function extractReelData() {
   if (reelLink) {
     while (container && container !== document.body) {
       const profileLink = Array.from(
-        container.querySelectorAll('a[href]')
+        container.querySelectorAll("a[href]")
       ).find(link => {
-        const href = link.getAttribute("href");
-        return href && /^\/[^/]+\/?$/.test(href);
+        const cleanPath = getCleanPath(link.getAttribute("href"));
+        return (
+          cleanPath.length > 0 &&
+          !cleanPath.includes("/") &&
+          !SYSTEM_PATHS.has(cleanPath)
+        );
       });
 
-      if (profileLink) {
-        break;
-      }
-
+      if (profileLink) break;
       container = container.parentElement;
     }
   }
@@ -53,12 +83,31 @@ function extractReelData() {
   // 3. Find author profile link
   // ------------------------------------------------------------
 
-  const profileLink = Array.from(
-    container.querySelectorAll('a[href]')
+  // Priority 1: Match standard Instagram author profile class `_a6hd`
+  let profileLink = Array.from(
+    container.querySelectorAll('a._a6hd[href], a[href].notranslate')
   ).find(link => {
-    const href = link.getAttribute("href");
-    return href && /^\/[^/]+\/?$/.test(href);
+    const cleanPath = getCleanPath(link.getAttribute("href"));
+    return (
+      cleanPath.length > 0 &&
+      !cleanPath.includes("/") &&
+      !SYSTEM_PATHS.has(cleanPath)
+    );
   });
+
+  // Priority 2: Fallback to searching all links inside container
+  if (!profileLink) {
+    profileLink = Array.from(container.querySelectorAll("a[href]")).find(
+      link => {
+        const cleanPath = getCleanPath(link.getAttribute("href"));
+        return (
+          cleanPath.length > 0 &&
+          !cleanPath.includes("/") &&
+          !SYSTEM_PATHS.has(cleanPath)
+        );
+      }
+    );
+  }
 
   if (!profileLink) {
     throw new Error("Could not find author profile link.");
@@ -70,101 +119,94 @@ function extractReelData() {
 
   let accountName = null;
 
-  const usernameSpan = profileLink.querySelector(
-    'span[dir="auto"]'
-  );
+  // Try extracting from inner span/text nodes first (e.g., <span dir="auto">wasted</span>)
+  const textContainer =
+    profileLink.querySelector('span[dir="auto"]') ||
+    profileLink.querySelector("span") ||
+    profileLink;
 
-  if (usernameSpan) {
-    accountName = usernameSpan.textContent.trim();
-  } else {
-    const href = profileLink.getAttribute("href");
-    if (href) {
-      accountName = href
-        .replace(/^\/+/, "")
-        .replace(/\/+$/, "");
-    }
+  if (textContainer && textContainer.textContent.trim()) {
+    accountName = textContainer.textContent.trim();
   }
 
-  // ------------------------------------------------------------
-  // 5. Extract Caption (targeted directly within author wrapper)
-  // ------------------------------------------------------------
+  // Fallback: Parse directly from href (e.g. href="/wasted/?hl=en" -> "wasted")
+  if (!accountName || SYSTEM_PATHS.has(accountName.toLowerCase())) {
+    const rawHref = profileLink.getAttribute("href");
+    const cleanUsername = getCleanPath(rawHref);
+
+    if (cleanUsername && !SYSTEM_PATHS.has(cleanUsername)) {
+      accountName = cleanUsername;
+    }
+  }
 
   let captionElement = null;
 
-  /*
-   * Step 5A: Find the outer span[dir="auto"] that wraps BOTH
-   * the profile link AND the caption text.
-   */
-  const parentWrapper = profileLink.closest('span[dir="auto"]');
+  const lineStyleSpans = Array.from(
+    document.querySelectorAll('span[style*="line-height"]')
+  ).filter(span => {
+    const style = (span.getAttribute("style") || "").replace(/\s+/g, "");
+    const text = span.textContent.trim();
+    return style.includes("line-height:18px") && text.length > 20;
+  });
 
-  if (parentWrapper) {
-    /*
-     * Look for child spans inside this parent wrapper that DO NOT
-     * contain the profileLink, username, or timestamp (<time>).
-     */
-    const captionCandidates = Array.from(
-      parentWrapper.querySelectorAll('span')
-    ).filter(span => {
-      // Must contain text
-      if (!span.textContent.trim()) return false;
-      // Cannot contain the profile link
-      if (span.contains(profileLink) || profileLink.contains(span)) return false;
-      // Cannot contain the timestamp
-      if (span.querySelector('time') || span.closest('time')) return false;
-      // Cannot contain inner spans (we want the leaf node holding the text)
-      if (span.querySelector('span')) return false;
-
-      return true;
-    });
-
-    if (captionCandidates.length > 0) {
-      // Pick the longest text span inside the wrapper (the caption)
-      captionElement = captionCandidates.sort(
-        (a, b) => b.textContent.trim().length - a.textContent.trim().length
-      )[0];
-    }
+  if (lineStyleSpans.length > 0) {
+    captionElement = lineStyleSpans.sort(
+      (a, b) => b.textContent.trim().length - a.textContent.trim().length
+    )[0];
   }
 
-  /*
-   * Step 5B: Fallback if Instagram structure varies slightly
-   */
+  // Fallback if no line-height style span found
   if (!captionElement) {
-    const fallbackSpans = Array.from(
-      container.querySelectorAll('span')
-    ).filter(span => {
-      if (!span.textContent.trim()) return false;
-      if (profileLink.contains(span) || span.contains(profileLink)) return false;
-      if (span.querySelector('a, button, time, span')) return false;
+    const allSpans = Array.from(document.querySelectorAll("span")).filter(span => {
+      const text = span.textContent.trim();
+      if (text.length < 30) return false;
+      if (span.querySelector("time, button, input")) return false;
       return true;
     });
 
-    if (fallbackSpans.length > 0) {
-      captionElement = fallbackSpans.sort(
+    if (allSpans.length > 0) {
+      captionElement = allSpans.sort(
         (a, b) => b.textContent.trim().length - a.textContent.trim().length
       )[0];
     }
   }
 
   // ------------------------------------------------------------
-  // 6. Convert <br> tags and extract plain text
+  // 6. Clean Caption Text (Strip Account Name & Timestamp)
   // ------------------------------------------------------------
 
-  function getText(element) {
+  function getCleanCaptionText(element, accountNameStr) {
+    if (!element) return "";
+
     const clone = element.cloneNode(true);
 
+    // 1. Remove all timestamp <time> tags and buttons
+    clone.querySelectorAll("time, button, a._a6hd").forEach(el => el.remove());
+
+    // 2. Convert <br> tags to newlines
     clone.querySelectorAll("br").forEach(br => {
       br.replaceWith("\n");
     });
 
-    return clone.textContent
+    let rawText = clone.textContent
       .replace(/\u00a0/g, " ")
       .replace(/\r/g, "")
       .replace(/[ \t]+\n/g, "\n")
       .replace(/\n[ \t]+/g, "\n")
       .trim();
+
+    // 3. Strip leading account name if present at start of text
+    if (accountNameStr && rawText.toLowerCase().startsWith(accountNameStr.toLowerCase())) {
+      rawText = rawText.slice(accountNameStr.length).trim();
+    }
+
+    // 4. Strip leading Instagram relative timestamp patterns (e.g. "41w", "2d", "10h", "15m", "1y")
+    rawText = rawText.replace(/^(\d+[smhdwy]|•|\s)+/i, "").trim();
+
+    return rawText;
   }
 
-  const caption = captionElement ? getText(captionElement) : null;
+  const caption = getCleanCaptionText(captionElement, accountName);
 
   // ------------------------------------------------------------
   // 7. Extract hashtags
@@ -175,18 +217,19 @@ function extractReelData() {
     : [];
 
   // ------------------------------------------------------------
-  // 8. Result
+  // 8. Final Payload
   // ------------------------------------------------------------
 
   const result = {
-    account_name: accountName,
+    account_name: accountName || "",
     caption: caption,
-    hashtags: hashtags
+    hashtags: hashtags,
+    source_url: window.location.href,
+    user_id: userId,
+    requested_at: new Date().toISOString()
   };
 
   console.log("Instagram Reel Extracted:", result);
 
   return result;
 }
-
-// extractInstagramReel();
