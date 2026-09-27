@@ -31,6 +31,35 @@ export const CATEGORY_HEX: Record<string, string> = {
 // from every category color so it reads as the one-of-a-kind anchor
 export const USER_NODE_HEX = "#FDF3D9";
 
+// one emoji per category (rendered as a billboard sprite on the node
+// itself) plus the hub - purely visual, keyed the same way as
+// CATEGORY_HEX so both stay in sync
+export const CATEGORY_ICON: Record<string, string> = {
+  food: "🍳",
+  tech: "💻",
+  shop: "🛍️",
+  fitness: "💪",
+  lifestyle: "✈️",
+  entertainment: "🎬",
+  other: "✨",
+};
+
+export const USER_NODE_ICON = "👤";
+
+export interface RecipeInfo {
+  ingredients: string[];
+  steps: string[];
+  servings?: string | null;
+  cook_time?: string | null;
+}
+
+export interface ProductInfo {
+  name: string;
+  description: string;
+  price?: string | null;
+  purchase_link?: string | null;
+}
+
 export interface GraphNode {
   id: string;
   label: string;
@@ -39,6 +68,8 @@ export interface GraphNode {
   size: number;
   reel_url?: string | null;
   summary?: string | null;
+  recipe?: RecipeInfo | null;
+  product_list?: ProductInfo[] | null;
   // populated client-side by the force-graph library at runtime
   x?: number;
   y?: number;

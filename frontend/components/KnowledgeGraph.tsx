@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import type { GraphEdge, GraphNode, GraphResponse } from "@/lib/types";
-import { CATEGORY_COLOR_KEY, CATEGORY_HEX, USER_NODE_HEX } from "@/lib/types";
+import { CATEGORY_COLOR_KEY, CATEGORY_HEX, CATEGORY_ICON, USER_NODE_HEX, USER_NODE_ICON } from "@/lib/types";
 
 interface Props {
   data: GraphResponse;
@@ -22,6 +22,18 @@ function colorForNode(node: GraphNode): string {
   const hex = (key && CATEGORY_HEX[key]) || CATEGORY_HEX.other;
   if (node.type === "concept") return hex + "99";
   return hex;
+}
+
+// only the hub and category nodes get an icon - reels/concepts stay
+// plain so the icon reads as "this is a top-level anchor," not noise
+// repeated on every small node
+function iconForNode(node: GraphNode): string | null {
+  if (node.type === "user") return USER_NODE_ICON;
+  if (node.type === "category") {
+    const key = CATEGORY_COLOR_KEY[node.label as keyof typeof CATEGORY_COLOR_KEY];
+    return (key && CATEGORY_ICON[key]) || CATEGORY_ICON.other;
+  }
+  return null;
 }
 
 function buildCategoryAnchors(categoryLabels: string[]): Map<string, Vec3> {
@@ -120,6 +132,31 @@ function getGlowTexture(): THREE.Texture {
   return glowTextureCache;
 }
 
+const iconTextureCache = new Map<string, THREE.Texture>();
+function getIconTexture(emoji: string): THREE.Texture {
+  const cached = iconTextureCache.get(emoji);
+  if (cached) return cached;
+
+  const size = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  ctx.clearRect(0, 0, size, size);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `${size * 0.72}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+  // soft dark halo so the glyph reads clearly against every node color,
+  // not just the lighter ones
+  ctx.shadowColor = "rgba(0,0,0,0.55)";
+  ctx.shadowBlur = 10;
+  ctx.fillText(emoji, size / 2, size / 2 + size * 0.04);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  iconTextureCache.set(emoji, texture);
+  return texture;
+}
+
 function buildNodeObject(node: any): THREE.Object3D {
   const color = colorForNode(node);
   const isUser = node.type === "user";
@@ -150,6 +187,21 @@ function buildNodeObject(node: any): THREE.Object3D {
   const group = new THREE.Group();
   group.add(sprite);
   group.add(mesh);
+
+  const icon = iconForNode(node);
+  if (icon) {
+    const iconMaterial = new THREE.SpriteMaterial({
+      map: getIconTexture(icon),
+      transparent: true,
+      depthTest: false, // always render on top of this node's own sphere
+      depthWrite: false,
+    });
+    const iconSprite = new THREE.Sprite(iconMaterial);
+    const iconScale = radius * 1.4;
+    iconSprite.scale.set(iconScale, iconScale, 1);
+    group.add(iconSprite);
+  }
+
   return group;
 }
 
@@ -244,7 +296,15 @@ function applyLayout(graph: any, data: GraphResponse, forceX: any, forceY: any, 
     return { ...n };
   });
 
-  graph.graphData({ nodes, links: data.edges as any });
+  // 3d-force-graph MUTATES link objects in place once the simulation
+  // resolves them - it replaces the string source/target with actual
+  // node object references. Passing data.edges directly would corrupt
+  // those same objects for every OTHER consumer of this data (e.g.
+  // page.tsx's category filter, which expects source/target to stay
+  // plain string ids across re-renders) - so hand the graph fresh
+  // copies every time, never the shared originals.
+  const links = data.edges.map((e) => ({ source: e.source, target: e.target }));
+  graph.graphData({ nodes, links: links as any });
 
   const anchorFor = (n: any): Vec3 => {
     if (n.type === "reel") return reelAnchors.get(n.id) || { x: 0, y: 0, z: 0 };

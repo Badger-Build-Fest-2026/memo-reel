@@ -75,7 +75,7 @@ export default function ChatDock({ userId }: Props) {
               {messages.map((m, i) => (
                 <div key={i} className="text-sm leading-relaxed">
                   <span className="text-xs uppercase tracking-wide text-dust block mb-1">
-                    {m.role === "user" ? "You" : "RecallGraph"}
+                    {m.role === "user" ? "You" : "MemoReel"}
                   </span>
                   {m.role === "user" ? (
                     <span className="text-paper">{m.content}</span>
