@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import time
 from typing import Any, Dict, List, Optional
 import warnings
 from agent.graph_engine import ReelGraphEngine
@@ -28,7 +29,7 @@ warnings.filterwarnings(
 
 load_dotenv()
 
-_LAKEBASE_URL = os.getenv("LAKEBASE_DATABASE_URL")
+_LAKEBASE_URL = os.getenv("DATABRICKS_DATABASE_URL")
 _DEFAULT_DATA_SOURCE = (
     _LAKEBASE_URL if _LAKEBASE_URL else "data/dummy_reels.jsonl"
 )
@@ -43,6 +44,7 @@ FALLBACK_GEMINI_MODEL = "gemini-2.5-flash-lite"
 def find_working_gemini_model(api_key: str) -> Optional[str]:
   global _RESOLVED_WORKING_MODEL
   if _RESOLVED_WORKING_MODEL:
+    print(f"[TIMING] find_working_gemini_model: using cached model {_RESOLVED_WORKING_MODEL}, 0s", file=sys.stderr)
     return _RESOLVED_WORKING_MODEL
 
   candidates = [
@@ -58,11 +60,13 @@ def find_working_gemini_model(api_key: str) -> Optional[str]:
       m for m in candidates if m and not (m in seen or seen.add(m))
   ]
 
+  probe_start = time.perf_counter()
   print(
       "[ReelMind] Probing available Gemini models for active quota...",
       file=sys.stderr,
   )
   for candidate in ordered_candidates:
+    candidate_start = time.perf_counter()
     try:
       test_llm = ChatGoogleGenerativeAI(
           model=candidate,
@@ -71,10 +75,15 @@ def find_working_gemini_model(api_key: str) -> Optional[str]:
           max_retries=0,
       )
       test_llm.invoke([HumanMessage(content="ping")])
+      elapsed = time.perf_counter() - candidate_start
       print(f"[ReelMind] Model selected and ready: {candidate}", file=sys.stderr)
+      print(f"[TIMING] probe candidate {candidate}: SUCCESS in {elapsed:.2f}s", file=sys.stderr)
       _RESOLVED_WORKING_MODEL = candidate
+      total = time.perf_counter() - probe_start
+      print(f"[TIMING] find_working_gemini_model TOTAL: {total:.2f}s", file=sys.stderr)
       return candidate
     except Exception as exc:
+      elapsed = time.perf_counter() - candidate_start
       err_msg = str(exc)
       if (
           "ResourceExhausted" in err_msg
@@ -87,7 +96,10 @@ def find_working_gemini_model(api_key: str) -> Optional[str]:
       else:
         reason = type(exc).__name__
       print(f"  [-] {candidate}: {reason}", file=sys.stderr)
+      print(f"[TIMING] probe candidate {candidate}: FAILED ({reason}) in {elapsed:.2f}s", file=sys.stderr)
 
+  total = time.perf_counter() - probe_start
+  print(f"[TIMING] find_working_gemini_model TOTAL (all failed): {total:.2f}s", file=sys.stderr)
   return None
 
 
@@ -217,6 +229,8 @@ def _resolve_subcategory(query: str) -> Optional[str]:
 @tool
 def search_reels(query: str) -> List[Dict[str, Any]]:
   """Search for relevant reels across title, summary, transcription, category, and concepts."""
+  _t0 = time.perf_counter()
+  print(f"[TOOL_TIMING] search_reels START query={query!r}", file=sys.stderr)
   engine = get_graph_engine()
   q_lower = query.lower()
 
@@ -310,26 +324,34 @@ def search_reels(query: str) -> List[Dict[str, Any]]:
             r.get("capture_id") or r.get("link")
         ),
     })
+  print(f"[TOOL_TIMING] search_reels DONE in {time.perf_counter()-_t0:.2f}s, {len(results)} results", file=sys.stderr)
   return results
 
 
 @tool
 def get_connected_topics(subcategory_or_category: str) -> List[str]:
   """Return topics related to a subcategory or category walking strictly downward."""
+  _t0 = time.perf_counter()
+  print(f"[TOOL_TIMING] get_connected_topics START {subcategory_or_category!r}", file=sys.stderr)
   engine = get_graph_engine()
-  return engine.get_related_topics(subcategory_or_category)
+  result = engine.get_related_topics(subcategory_or_category)
+  print(f"[TOOL_TIMING] get_connected_topics DONE in {time.perf_counter()-_t0:.2f}s", file=sys.stderr)
+  return result
 
 
 @tool
 def get_reel_details(reel_title_or_id: str) -> Dict[str, Any]:
   """Fetch complete reel details including clean resource URLs, recipe, and concepts."""
+  _t0 = time.perf_counter()
+  print(f"[TOOL_TIMING] get_reel_details START {reel_title_or_id!r}", file=sys.stderr)
   engine = get_graph_engine()
   reel = engine.get_reel(reel_title_or_id)
   if not reel:
+    print(f"[TOOL_TIMING] get_reel_details DONE (not found) in {time.perf_counter()-_t0:.2f}s", file=sys.stderr)
     return {"error": f"Reel '{reel_title_or_id}' not found."}
 
   cid = reel.get("capture_id") or reel.get("link")
-  return {
+  result = {
       "capture_id": cid,
       "title": reel.get("title"),
       "url": reel.get("link"),
@@ -346,14 +368,19 @@ def get_reel_details(reel_title_or_id: str) -> Dict[str, Any]:
       "evidence": reel.get("evidence", []),
       "obsidian_url": reel.get("obsidian_url"),
   }
+  print(f"[TOOL_TIMING] get_reel_details DONE in {time.perf_counter()-_t0:.2f}s", file=sys.stderr)
+  return result
 
 
 @tool
 def explore_topic_hierarchy(query_term: str) -> Dict[str, Any]:
   """Examine if a topic exists in the hierarchy and return all descendant leaf reels."""
+  _t0 = time.perf_counter()
+  print(f"[TOOL_TIMING] explore_topic_hierarchy START {query_term!r}", file=sys.stderr)
   engine = get_graph_engine()
   node = engine.find_node(query_term)
   if not node:
+    print(f"[TOOL_TIMING] explore_topic_hierarchy DONE (not found) in {time.perf_counter()-_t0:.2f}s", file=sys.stderr)
     return {
         "found": False,
         "message": f"No node matches '{query_term}'.",
@@ -361,6 +388,7 @@ def explore_topic_hierarchy(query_term: str) -> Dict[str, Any]:
 
   node_id = node["node_id"]
   reels = engine.get_subtree_reels(node_id)
+  print(f"[TOOL_TIMING] explore_topic_hierarchy DONE in {time.perf_counter()-_t0:.2f}s, {len(reels)} reels", file=sys.stderr)
   return {
       "found": True,
       "matched_node": node.get("name"),
@@ -372,18 +400,26 @@ def explore_topic_hierarchy(query_term: str) -> Dict[str, Any]:
 @tool
 def enrich_reel_links(reel_title_or_id: str) -> Dict[str, Any]:
   """Visits all external URLs in a reel's 'links' array via MCP and returns extracted body content summaries."""
+  _t0 = time.perf_counter()
+  print(f"[TOOL_TIMING] enrich_reel_links START {reel_title_or_id!r}", file=sys.stderr)
   engine = get_graph_engine()
   tools_instance = ReelAgentTools(engine, mcp_fetcher=enrich_from_web)
-  return tools_instance.enrich_links(reel_title_or_id)
+  result = tools_instance.enrich_links(reel_title_or_id)
+  print(f"[TOOL_TIMING] enrich_reel_links DONE in {time.perf_counter()-_t0:.2f}s", file=sys.stderr)
+  return result
 
 @tool
 def fetch_external_url_context(url: str) -> str:
   """Fetch live clean markdown from a specific URL using FastMCP."""
+  _t0 = time.perf_counter()
   print(
       f"\n[TOOL CALL] enrich_from_web triggered for URL: {url}\n",
       file=sys.stderr,
   )
-  return enrich_from_web(url)
+  print(f"[TOOL_TIMING] fetch_external_url_context START url={url!r}", file=sys.stderr)
+  result = enrich_from_web(url)
+  print(f"[TOOL_TIMING] fetch_external_url_context DONE in {time.perf_counter()-_t0:.2f}s, result_len={len(result) if result else 0}", file=sys.stderr)
+  return result
 
 
 ALL_TOOLS = [
@@ -470,29 +506,47 @@ def _dynamic_fallback_runner(query: str) -> str:
 
 def run_reel_agent(query: str, data_source: Optional[str] = None) -> str:
   global _LAST_AGENT_ERROR
+  run_start = time.perf_counter()
+  print(f"[TIMING] run_reel_agent START query={query!r}", file=sys.stderr)
 
   if data_source:
+    t0 = time.perf_counter()
     get_graph_engine(data_source)
+    print(f"[TIMING] get_graph_engine(data_source): {time.perf_counter()-t0:.2f}s", file=sys.stderr)
 
   if _offline_mode_forced():
     _LAST_AGENT_ERROR = "offline mode forced via REELMIND_OFFLINE"
-    return _dynamic_fallback_runner(query)
+    result = _dynamic_fallback_runner(query)
+    print(f"[TIMING] run_reel_agent TOTAL (offline mode): {time.perf_counter()-run_start:.2f}s", file=sys.stderr)
+    return result
 
   api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
   if not api_key:
     _LAST_AGENT_ERROR = "GEMINI_API_KEY / GOOGLE_API_KEY is not set"
-    return _dynamic_fallback_runner(query)
+    result = _dynamic_fallback_runner(query)
+    print(f"[TIMING] run_reel_agent TOTAL (no api key): {time.perf_counter()-run_start:.2f}s", file=sys.stderr)
+    return result
+
+  t0 = time.perf_counter()
+  model_candidates = _model_candidates()
+  print(f"[TIMING] _model_candidates() (includes probing): {time.perf_counter()-t0:.2f}s -> {model_candidates}", file=sys.stderr)
 
   result = None
   failures: List[str] = []
-  for model_name in _model_candidates():
+  for model_name in model_candidates:
+    t_create = time.perf_counter()
     agent = create_agent(api_key, model_name)
+    print(f"[TIMING] create_agent({model_name}): {time.perf_counter()-t_create:.2f}s", file=sys.stderr)
+    t_invoke = time.perf_counter()
     try:
       result = agent.invoke({"messages": [HumanMessage(content=query)]})
+      print(f"[TIMING] agent.invoke({model_name}): SUCCESS in {time.perf_counter()-t_invoke:.2f}s", file=sys.stderr)
       break
     except Exception as exc:  # noqa: BLE001
+      elapsed = time.perf_counter() - t_invoke
       failure = f"{model_name}: {type(exc).__name__}: {exc}"
       failures.append(failure)
+      print(f"[TIMING] agent.invoke({model_name}): FAILED in {elapsed:.2f}s -> {type(exc).__name__}", file=sys.stderr)
       print(
           f"[ReelMind] {model_name} failed -> {type(exc).__name__}; trying next"
           " candidate",
@@ -502,12 +556,17 @@ def run_reel_agent(query: str, data_source: Optional[str] = None) -> str:
   if result is None:
     error = " | ".join(failures) or "no Gemini model candidates configured"
     _LAST_AGENT_ERROR = error
-    return f"> ⚠️ **Degraded mode - LLM calls failed:**\n\n{_dynamic_fallback_runner(query)}"
+    t_fallback = time.perf_counter()
+    fallback_text = _dynamic_fallback_runner(query)
+    print(f"[TIMING] _dynamic_fallback_runner (all models failed): {time.perf_counter()-t_fallback:.2f}s", file=sys.stderr)
+    print(f"[TIMING] run_reel_agent TOTAL: {time.perf_counter()-run_start:.2f}s", file=sys.stderr)
+    return f"> ⚠️ **Degraded mode - LLM calls failed:**\n\n{fallback_text}"
 
   for msg in reversed(result.get("messages", [])):
     if isinstance(msg, AIMessage) and msg.content:
       if isinstance(msg.content, str):
         _LAST_AGENT_ERROR = None
+        print(f"[TIMING] run_reel_agent TOTAL: {time.perf_counter()-run_start:.2f}s", file=sys.stderr)
         return msg.content
       if isinstance(msg.content, list):
         parts = [
@@ -515,7 +574,10 @@ def run_reel_agent(query: str, data_source: Optional[str] = None) -> str:
             for p in msg.content
         ]
         _LAST_AGENT_ERROR = None
+        print(f"[TIMING] run_reel_agent TOTAL: {time.perf_counter()-run_start:.2f}s", file=sys.stderr)
         return "".join(parts)
 
   _LAST_AGENT_ERROR = "Gemini returned no assistant message"
-  return _dynamic_fallback_runner(query)
+  result_text = _dynamic_fallback_runner(query)
+  print(f"[TIMING] run_reel_agent TOTAL (no AI message found): {time.perf_counter()-run_start:.2f}s", file=sys.stderr)
+  return result_text

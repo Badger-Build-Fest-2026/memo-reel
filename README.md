@@ -18,7 +18,7 @@ order and tries each one before giving up:
 | --- | --- |
 | `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Credentials; if unset the agent runs on the deterministic graph engine. |
 | `GEMINI_MODEL` | Pin the primary model id. |
-| `LAKEBASE_DATABASE_URL` | Live Lakebase source; falls back to `data/dummy_reels.jsonl`. |
+| `DATABRICKS_DATABASE_URL` | Live Lakebase source; falls back to `data/dummy_reels.jsonl`. |
 | `REELMIND_OFFLINE=1` | Force deterministic graph-engine answers (tests / CI / quota safety). |
 | `REELMIND_LIVE=1` | `scripts/verify_agent.py` opt-in to exercise the real Gemini call. |
 
