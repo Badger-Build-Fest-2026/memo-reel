@@ -19,6 +19,8 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import tool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
+# In agent/langgraph_agent.py:
+from agent.tools import ReelAgentTools
 
 warnings.filterwarnings(
     "ignore", category=UserWarning, module="langchain_google_genai"
@@ -113,22 +115,19 @@ def get_last_agent_error() -> Optional[str]:
   return _LAST_AGENT_ERROR
 
 
-SYSTEM_PROMPT = """You are ReelMind, an expert multimodal knowledge retrieval assistant specialized in Instagram Reels knowledge graphs.
+SYSTEM_PROMPT = """You are RecallGraph, an expert multimodal knowledge retrieval assistant specialized in Instagram Reels knowledge graphs.
 
 Follow these strict guidelines when formulating answers:
 1. Ground every factual assertion directly in data retrieved from your tools.
 2. Sourced citations MUST cite the Instagram Reel URL using this exact markdown link format:
    [@title or author](link)  (where link is the Instagram reel URL, e.g. https://www.instagram.com/reel/...)
-3. Extract and display external URLs found in `resource_urls` or `summary` as clean markdown links: [Resource Description](url).
+3. LINK ENRICHMENT & RESOURCE SUMMARY:
+   - When a retrieved reel contains items in its `links` list, review their URLs.
+   - For technical questions, tool comparisons, or specific feature lookups, ALWAYS call `enrich_reel_links` or `fetch_external_url_context` on the links.
+   - Summarize the key features and takeaways discovered from visiting those external pages directly in your final response under a dedicated "**Enriched Insights from Resources**" section.
 4. Format every key category, subcategory, and concept in Obsidian wikilinks: [[Category]], [[Subcategory]], and [[Concept]].
-5. If recipes or meal prep ingredients are discussed:
-   - Format ingredients as checklist checkboxes: - [ ] ingredient item
-   - List step-by-step cooking instructions clearly with numbered steps.
-6. For product lists or ranked CLI tools (product_list), render a clean numbered list:
-   1. product_name
-7. Append an Obsidian vault link at the end when available: [Open in Obsidian](obsidian_url)
-8. STRICT SUBCATEGORY ISOLATION: answer strictly within the requested subcategory scope.
-9. EXTERNAL LINK ENRICHMENT: When a reel has external documentation or GitHub repos and technical specifics are needed, call `fetch_external_url_context` on that URL before generating the response.
+5. Format ingredient lists with checklist checkboxes (- [ ] item) and steps with numbered lists.
+6. STRICT SUBCATEGORY ISOLATION: Answer strictly within the domain of the user's inquiry.
 """
 
 STOPWORDS = {
@@ -370,10 +369,16 @@ def explore_topic_hierarchy(query_term: str) -> Dict[str, Any]:
       "reels": reels[:6],
   }
 
+@tool
+def enrich_reel_links(reel_title_or_id: str) -> Dict[str, Any]:
+  """Visits all external URLs in a reel's 'links' array via MCP and returns extracted body content summaries."""
+  engine = get_graph_engine()
+  tools_instance = ReelAgentTools(engine, mcp_fetcher=enrich_from_web)
+  return tools_instance.enrich_links(reel_title_or_id)
 
 @tool
 def fetch_external_url_context(url: str) -> str:
-  """Fetch live clean markdown from external URLs using FastMCP."""
+  """Fetch live clean markdown from a specific URL using FastMCP."""
   print(
       f"\n[TOOL CALL] enrich_from_web triggered for URL: {url}\n",
       file=sys.stderr,

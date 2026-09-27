@@ -12,6 +12,9 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import networkx as nx
+from dotenv import load_dotenv
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 CATEGORY_MAP = {
     "food": "Food & Cooking",
@@ -36,80 +39,71 @@ SUBCATEGORY_BRIDGES = [
 
 TIER_ORDER = {"category": 0, "subcategory": 1, "concept": 2, "reel": 3}
 
+load_dotenv()
 
 class ReelGraphEngine:
   """Graph engine representing multimodal Instagram Reels in an anchor-to-leaf hierarchy."""
 
   def __init__(self, data_source: Optional[Any] = None):
-    self.graph = nx.Graph()
-    self.reels: Dict[str, dict] = {}
+        """Initializes graph and optionally loads records from a data source."""
+        self.graph = nx.Graph()
+        self.reels: Dict[str, dict] = {}
 
-    if isinstance(data_source, (str, Path)):
-      path_str = str(data_source)
-      if (
-          path_str.endswith(".jsonl")
-          or path_str.endswith(".json")
-          or Path(path_str).is_file()
-      ):
-        self.load_from_jsonl(path_str)
-    elif isinstance(data_source, list):
-      self._populate_graph(data_source)
+        import os
+        db_url = data_source if (isinstance(data_source, str) and data_source.startswith("postgres")) else os.getenv("LAKEBASE_DATABASE_URL")
 
-  def load_from_jsonl(self, jsonl_path: str | Path) -> None:
-    path = Path(jsonl_path)
-    if not path.is_file():
-      raise FileNotFoundError(f"File not found: {path}")
-
-    records: List[dict] = []
-    with path.open("r", encoding="utf-8") as f:
-      content = f.read().strip()
-      if content.startswith("["):
-        records = json.loads(content)
-      else:
-        for line in content.splitlines():
-          clean_line = line.strip()
-          if clean_line:
-            records.append(json.loads(clean_line))
-
-    self._populate_graph(records)
+        if db_url and db_url.startswith("postgres"):
+            self.load_from_lakebase(db_url)
+        elif isinstance(data_source, (str, Path)):
+            self.load_from_jsonl(data_source)
+        elif isinstance(data_source, list):
+            self._populate_graph(data_source)
 
   def load_from_lakebase(
-      self,
-      connection_params_or_conn: Any,
-      table_name: str = "buildfest_app.reels_knowledge",
-  ) -> None:
-    """Ingests records directly from Databricks Lakebase Postgres."""
-    if connection_params_or_conn is None:
-      raise NotImplementedError(
-          "Lakebase Postgres connection is not yet configured. Local data"
-          " source is supported."
-      )
+        self,
+        connection_params_or_conn: Any,
+        table_name: str = "public.capture_knowledge",
+    ) -> None:
+        """Connects to Lakebase Postgres and loads all records into the graph."""
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
 
-    query = (
-        "SELECT capture_id, user_id, requested_at, category, knowledge_json"
-        f" FROM {table_name};"
-    )
-    cursor = connection_params_or_conn.cursor()
-    cursor.execute(query)
-    rows = cursor.fetchall()
+        # Handle either a URL connection string or an active connection object
+        should_close = False
+        if isinstance(connection_params_or_conn, str):
+            conn = psycopg2.connect(connection_params_or_conn)
+            should_close = True
+        elif connection_params_or_conn is not None:
+            conn = connection_params_or_conn
+        else:
+            raise NotImplementedError("Lakebase connection parameter cannot be None.")
 
-    records = []
-    for row in rows:
-      if isinstance(row, dict):
-        rec = row
-      else:
-        rec = {
-            "capture_id": row[0],
-            "user_id": row[1],
-            "requested_at": str(row[2]),
-            "category": row[3],
-            "knowledge_json": (
-                json.loads(row[4]) if isinstance(row[4], str) else row[4]
-            ),
-        }
-      records.append(rec)
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                query = f"""
+                    SELECT capture_id, user_id, requested_at, category, knowledge_json 
+                    FROM {table_name} 
+                    WHERE knowledge_json IS NOT NULL;
+                """
+                cur.execute(query)
+                raw_records = cur.fetchall()
+                print(f"[Lakebase] Successfully pulled {len(raw_records)} rows from {table_name}")
 
-    self._populate_graph(records)
+                records = []
+                for row in raw_records:
+                    rec = dict(row)
+                    # Convert stringified JSON to dict if Postgres returned raw text
+                    if isinstance(rec.get("knowledge_json"), str):
+                        try:
+                            rec["knowledge_json"] = json.loads(rec["knowledge_json"])
+                        except Exception:
+                            pass
+                    records.append(rec)
+
+                self._populate_graph(records)
+        finally:
+            if should_close:
+                conn.close()
 
   @staticmethod
   def _node_id(node_type: str, raw_name: str) -> str:

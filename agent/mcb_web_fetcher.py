@@ -1,4 +1,4 @@
-"""FastMCP Server to fetch and extract clean markdown from URLs discovered in reel summaries."""
+"""FastMCP Server to fetch, extract clean markdown, and summarize URLs found in reel links."""
 
 from __future__ import annotations
 
@@ -26,7 +26,6 @@ def enrich_from_web(url: str, max_chars: int = 2500) -> str:
       resp.raise_for_status()
 
     soup = BeautifulSoup(resp.text, "html.parser")
-    # Remove non-content elements
     for element in soup(
         ["script", "style", "nav", "footer", "header", "noscript"]
     ):
@@ -34,11 +33,10 @@ def enrich_from_web(url: str, max_chars: int = 2500) -> str:
 
     body = soup.body or soup
     markdown_text = md(str(body), heading_style="ATX").strip()
-    # Collapse whitespace
     cleaned = "\n".join(
         [line for line in markdown_text.splitlines() if line.strip()]
     )
-    return cleaned[:max_chars]
+    return cleaned[:max_chars] if cleaned else "No body text extracted."
   except Exception as exc:
     return f"Failed to retrieve {url}: {type(exc).__name__}: {exc}"
 
