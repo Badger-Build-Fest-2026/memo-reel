@@ -8,15 +8,27 @@ FastAPI starter for RecallGraph.
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-export DATABRICKS_DATABASE_URL='postgresql://<user>:<password>@<endpoint>.database.<region>.cloud.databricks.com/recallgraph?sslmode=require'
+cp env.example .env
+# Edit .env and set DATABRICKS_DATABASE_URL to your actual connection URL.
 uvicorn app.main:app --reload
 ```
 
 The API checks the database connection at startup by running `SELECT 1`. If
 `DATABRICKS_DATABASE_URL` is missing or Databricks PostgreSQL is unreachable,
 startup fails before the app accepts requests. The connection URL can also use
-the generic `DATABASE_URL` variable. Keep the URL in an environment variable
-and never commit credentials.
+the generic `DATABASE_URL` variable if `DATABRICKS_DATABASE_URL` is unset.
+Keep the URL in `.env` and never commit credentials.
+
+### Environment variables
+
+- `DATABRICKS_DATABASE_URL` (required): PostgreSQL connection URL for the
+  `recallgraph` database; include `sslmode=require`.
+- `DATABASE_URL` (optional fallback): used only when
+  `DATABRICKS_DATABASE_URL` is unset.
+- `SQLALCHEMY_ECHO` (optional, defaults to `false`): set to `true` to log SQL
+  statements.
+- `DB_DISABLE_PREPARED_STATEMENTS` (optional, defaults to `false`): set to
+  `true` to disable asyncpg's prepared-statement cache.
 
 The API docs are available at `http://127.0.0.1:8000/docs`.
 
