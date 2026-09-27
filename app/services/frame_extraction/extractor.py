@@ -26,7 +26,7 @@ from app.services.frame_extraction.scoring import (
 
 # Defaults - tune these against real test videos, don't assume they're right.
 SAMPLE_INTERVAL_SEC = 0.5
-CHANGE_THRESHOLD = 0.0425    # mean normalized pixel diff needed to count as "changed"
+CHANGE_THRESHOLD = 0.08     # mean normalized pixel diff needed to count as "changed"
 MIN_GAP_SEC = 1.5
 MAX_FRAMES = 15
 
@@ -40,6 +40,12 @@ def extract_important_frames(
     min_gap_sec: float = MIN_GAP_SEC,
     build_sheet: bool = True,
 ) -> FrameExtractionResult:
+    """
+    NOTE on output_dir when processing many reels (e.g. from the async
+    pipeline): pass a reel-scoped path such as f"output/{reel_id}/frames"
+    so different reels' frames/contact sheets don't overwrite each other.
+    See app/services/pipeline.py, which does this automatically.
+    """
     if not os.path.exists(video_path):
         raise FileNotFoundError(f"Video not found: {video_path}")
 
