@@ -23,7 +23,9 @@ API and worker connect to it using the internal Docker hostname `redis:6379`,
 which Compose configures automatically. To check Redis, run
 `docker compose exec redis redis-cli ping`. The `migrate` service creates the
 table if needed and applies the capture job migration before the API or worker
-starts.
+starts. The API runs Uvicorn with `--reload` and mounts `./app` read-only into
+the container, so Python changes under `app/` restart the API automatically.
+Worker code changes still require restarting the worker service.
 
 To see the API, worker, Redis, or migration logs:
 
@@ -31,11 +33,13 @@ To see the API, worker, Redis, or migration logs:
 docker compose logs -f api worker redis migrate
 ```
 
-Worker error details are appended to the persistent `worker_logs` Docker volume.
-To view them (after the first worker error):
+All worker `ERROR`-level log records, including records from third-party
+libraries, are appended without timestamps to the persistent `worker_logs`
+Docker volume. Sensitive tokens and URL query strings are redacted; captions
+and LLM inputs are not logged. To view them:
 
 ```sh
-docker compose exec worker cat /app/logs/worker-errors.log
+docker compose exec worker cat /app/watchlogs/worker-errors.log
 ```
 
 To stop the stack:
@@ -149,8 +153,17 @@ Workers atomically claim eligible `queued` captures, set a two-hour processing
 lease, and release the transaction before calling the extraction service.
 Transient extraction failures are retried up to four total attempts with
 exponential backoff capped at five minutes. Captures become `failed` after the
-last attempt; safe error diagnostics are appended locally to `worker-errors.log`
-(or the path set with `WORKER_ERROR_LOG`), not persisted in PostgreSQL.
+last attempt; sanitized error diagnostics with capture ID, stage, exception
+type, and cause summary are appended locally to `worker-errors.log` (or the
+path set with `WORKER_ERROR_LOG`), not persisted in PostgreSQL.
+Retries reuse a non-empty downloaded video for the capture. If valid final
+knowledge JSON was already written, retries reuse it and continue at the
+database upsert instead of downloading or rerunning the pipeline. JSON files
+are replaced atomically so an interrupted write is not mistaken for a result.
+If the LLM stage fails before final JSON exists, successfully completed frame
+extraction and transcription are cached under the capture's local pipeline
+directory and reused on retry. The LLM request itself is retried because it
+did not produce a valid result.
 Extraction output is not persisted. Redis/Celery results are ignored;
 PostgreSQL stores capture status and timestamps only.
 

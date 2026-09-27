@@ -3,10 +3,27 @@ from pathlib import Path
 from uuid import UUID
 
 
+def _existing_capture_video(video_dir: Path, capture_id: str) -> Path | None:
+    candidates = [
+        path
+        for path in video_dir.glob(f"{capture_id}.*")
+        if path.is_file()
+        and path.suffix.lower() not in {".part", ".ytdl", ".tmp"}
+        and path.stat().st_size > 0
+        and not path.with_name(f"{path.name}.part").exists()
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
 def download_reel_video(source_url: str, capture_id: str, output_dir: str) -> Path:
     capture_id = str(UUID(capture_id))
     video_dir = Path(output_dir).resolve()
     video_dir.mkdir(parents=True, exist_ok=True)
+    cached_video = _existing_capture_video(video_dir, capture_id)
+    if cached_video is not None:
+        return cached_video
 
     options = {
         "format": "bestvideo*+bestaudio/best",

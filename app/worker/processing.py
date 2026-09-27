@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.models.reel_submission import ReelSubmission
 from app.services.storage.database_knowledge import save_knowledge_to_database
 from app.worker.error_logging import log_worker_error
-from app.worker.extraction import run_knowledge_extraction
+from app.worker.extraction import ExtractionStageError, run_knowledge_extraction
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +87,7 @@ async def process_capture(
         return ProcessOutcome("skipped")
 
     attempt_count = claimed.attempt_count
+    stage = "knowledge_extraction"
     try:
         extraction = (extractor or run_knowledge_extraction)(claimed)
         if inspect.isawaitable(extraction):
@@ -94,6 +95,7 @@ async def process_capture(
         if isinstance(extraction, dict) and isinstance(
             extraction.get("json_path"), str
         ):
+            stage = "database_result_save"
             await save_knowledge_to_database(
                 claimed,
                 extraction["json_path"],
@@ -123,11 +125,16 @@ async def process_capture(
             "extraction_failed_terminal" if terminal else "extraction_failed_retry",
             capture_id,
             error,
+            stage=error.stage
+            if isinstance(error, ExtractionStageError)
+            else stage,
         )
         logger.error(
-            "Knowledge extraction failed for capture %s on attempt %s",
+            "Knowledge extraction failed for capture %s on attempt %s at stage %s (%s)",
             capture_id,
             attempt_count,
+            error.stage if isinstance(error, ExtractionStageError) else stage,
+            type(error).__name__,
         )
         return ProcessOutcome("retry" if not terminal else "failed", attempt_count)
 

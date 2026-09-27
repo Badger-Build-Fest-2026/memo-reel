@@ -7,6 +7,8 @@ returns a ReelKnowledge, this decides where it lands on disk.
 """
 
 import os
+import tempfile
+from pathlib import Path
 
 from app.schemas.knowledge import ReelKnowledge
 from app.services.storage.jsonl_store import append_reel_jsonl
@@ -22,13 +24,34 @@ def save_knowledge(
     Returns {"json_path": ..., "jsonl_path": ... or None}
     """
     filename = make_filename(knowledge.category, knowledge.subcategory, knowledge.title)
-    json_path = os.path.join(output_dir, filename)
-    os.makedirs(output_dir, exist_ok=True)
-    with open(json_path, "w") as f:
-        f.write(knowledge.model_dump_json(indent=2))
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    json_path = output_path / filename
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=output_path,
+            prefix=f".{filename}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temp_file:
+            temp_path = Path(temp_file.name)
+            temp_file.write(knowledge.model_dump_json(indent=2))
+        if temp_path is None:
+            raise RuntimeError("Temporary knowledge JSON file was not created")
+        os.replace(temp_path, json_path)
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
 
     jsonl_path = None
     if user_id:
-        jsonl_path = append_reel_jsonl(knowledge, user_id=user_id, base_dir=os.path.join(output_dir, "users"))
+        jsonl_path = append_reel_jsonl(
+            knowledge,
+            user_id=user_id,
+            base_dir=str(output_path / "users"),
+        )
 
-    return {"json_path": json_path, "jsonl_path": jsonl_path}
+    return {"json_path": str(json_path), "jsonl_path": jsonl_path}

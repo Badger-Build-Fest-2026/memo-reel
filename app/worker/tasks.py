@@ -41,7 +41,12 @@ def process_capture_task(task, capture_id: str) -> str:
     try:
         outcome = asyncio.run(_process_and_dispose(capture_id))
     except Exception as error:
-        log_worker_error("task_processing_failed", capture_id, error)
+        log_worker_error(
+            "task_processing_failed",
+            capture_id,
+            error,
+            stage="task_execution",
+        )
         retries = task.request.retries
         if retries >= MAX_RETRIES:
             logger.error("Capture task exhausted retries for %s", capture_id)
