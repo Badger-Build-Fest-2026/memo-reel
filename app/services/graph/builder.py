@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.capture_knowledge import CaptureKnowledge
-from app.schemas.graph import GraphEdge, GraphNode, GraphResponse
+from app.schemas.graph import GraphEdge, GraphNode, GraphResponse, ProductInfo, RecipeInfo
 
 
 def _concept_id(name: str) -> str:
@@ -31,18 +31,24 @@ def _category_id(category: str) -> str:
     return f"category:{category}"
 
 
-def _build_graph_from_rows(rows: list[tuple[str, dict, str]]) -> GraphResponse:
+def _build_graph_from_rows(rows: list[tuple[str, dict, str, str | None]]) -> GraphResponse:
     """
-    rows: list of (capture_id, knowledge_json, category) tuples -
-    kept as plain tuples (not ORM rows) so this function has no
-    dependency on SQLAlchemy and can be tested in isolation.
+    rows: list of (capture_id, knowledge_json, category, obsidian_url)
+    tuples - kept as plain tuples (not ORM rows) so this function has
+    no dependency on SQLAlchemy and can be tested in isolation.
     """
     nodes: dict[str, GraphNode] = {}
     edges: list[GraphEdge] = []
 
-    for capture_id, reel, row_category in rows:
+    for capture_id, reel, row_category, row_obsidian_url in rows:
         reel_node_id = f"reel:{capture_id}"
         category = reel.get("category") or row_category
+        # the dedicated column is authoritative; knowledge_json's own
+        # copy is only a fallback for rows saved before that column existed
+        obsidian_url = row_obsidian_url or reel.get("obsidian_url")
+
+        recipe_data = reel.get("recipe")
+        product_list_data = reel.get("product_list")
 
         nodes[reel_node_id] = GraphNode(
             id=reel_node_id,
@@ -52,6 +58,9 @@ def _build_graph_from_rows(rows: list[tuple[str, dict, str]]) -> GraphResponse:
             size=1.5,
             reel_url=reel.get("reel_url"),
             summary=reel.get("summary"),
+            obsidian_url=obsidian_url,
+            recipe=RecipeInfo(**recipe_data) if recipe_data else None,
+            product_list=[ProductInfo(**p) for p in product_list_data] if product_list_data else None,
         )
 
         cat_id = _category_id(category)
@@ -59,10 +68,14 @@ def _build_graph_from_rows(rows: list[tuple[str, dict, str]]) -> GraphResponse:
             nodes[cat_id] = GraphNode(id=cat_id, label=category, type="category", size=2.5)
         edges.append(GraphEdge(source=reel_node_id, target=cat_id))
 
-        # (name, description) - description is None for recipe ingredients,
-        # which don't carry one in the schema. Reused as the node's
-        # "summary" field so the detail panel can show it on click,
-        # same as a reel's summary.
+        # (name, description) - concepts and products only. Recipe
+        # ingredients deliberately do NOT become graph nodes: unlike a
+        # tool or concept, two reels both using "salt" isn't a
+        # meaningful connection worth drawing, and a 10-ingredient
+        # recipe would otherwise turn every food reel into a dense
+        # blob of one-off nodes. The full ingredient list is still
+        # available - it's on the reel node itself (recipe field
+        # above), shown in its detail panel instead of as satellites.
         named_items: list[tuple[str, str | None]] = []
         if reel.get("concepts"):
             named_items += [
@@ -72,8 +85,6 @@ def _build_graph_from_rows(rows: list[tuple[str, dict, str]]) -> GraphResponse:
             named_items += [
                 (p["name"], p.get("description")) for p in reel["product_list"]
             ]
-        if reel.get("recipe"):
-            named_items += [(ingredient, None) for ingredient in reel["recipe"].get("ingredients", [])]
 
         for name, description in named_items:
             if not name:
@@ -94,5 +105,5 @@ async def build_graph(user_id: str, db: AsyncSession) -> GraphResponse:
     )
     rows = result.scalars().all()
     return _build_graph_from_rows(
-        [(row.capture_id, row.knowledge_json, row.category) for row in rows]
+        [(row.capture_id, row.knowledge_json, row.category, row.obsidian_url) for row in rows]
     )

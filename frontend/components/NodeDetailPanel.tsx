@@ -31,13 +31,39 @@ export default function NodeDetailPanel({ node, onClose }: Props) {
             >
               {node.category}
             </span>
-            <button
-              onClick={onClose}
-              className="text-dust hover:text-paper text-sm"
-              aria-label="Close"
-            >
-              ✕
-            </button>
+            <div className="flex items-center gap-3">
+              {node.obsidian_url && (
+                <a
+                  href={node.obsidian_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Open in Obsidian"
+                  className="text-nebula hover:text-paper transition-colors"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M12 2L4 9L8 22L16 22L20 9L12 2Z"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      fill="currentColor"
+                      fillOpacity="0.18"
+                    />
+                    <path
+                      d="M12 2L8 9M12 2L16 9M4 9H20M8 9L8 22M16 9L16 22M8 9L12 14L16 9"
+                      stroke="currentColor"
+                      strokeWidth="1"
+                    />
+                  </svg>
+                </a>
+              )}
+              <button
+                onClick={onClose}
+                className="text-dust hover:text-paper text-sm"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
           </div>
 
           <h2 className="font-display text-xl leading-snug mb-2">{node.label}</h2>

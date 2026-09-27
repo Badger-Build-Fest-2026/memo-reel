@@ -68,6 +68,7 @@ export interface GraphNode {
   size: number;
   reel_url?: string | null;
   summary?: string | null;
+  obsidian_url?: string | null;
   recipe?: RecipeInfo | null;
   product_list?: ProductInfo[] | null;
   // populated client-side by the force-graph library at runtime
