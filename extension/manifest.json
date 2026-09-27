@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "Reel Saver",
+  "version": "1.0.0",
+  "description": "Save Instagram Reels and jump to your dashboard, from a draggable in-page drawer.",
+  "icons": {
+    "16": "logo.png",
+    "48": "logo.png",
+    "128": "logo.png"
+  },
+  "action": {
+    "default_icon": "logo.png",
+    "default_title": "Reel Saver"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.instagram.com/*",
+    "https://recall-graph.onrender.com/*",
+    "http://127.0.0.1:8000/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://www.instagram.com/*"],
+      "js": ["reelExtractor.js", "reel-actions.js", "drawer-effects.js", "content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/logo.png", "reelExtractor.js", "assets/memorize.png", "assets/explore.png"],
+      "matches": ["https://www.instagram.com/*"]
+    }
+  ]
+}

@@ -1,0 +1,188 @@
+/* ---------------------------------------------------------
+   Reel Saver — floating drawer styles
+   Every element uses rounded corners, no sharp edges anywhere.
+--------------------------------------------------------- */
+
+:root {
+  --rs-radius-lg: 20px;
+  --rs-radius-md: 14px;
+  --rs-radius-full: 999px;
+  --rs-bg: #ffffff;
+  --rs-bg-soft: #f4f4f7;
+  --rs-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  --rs-shadow-hover: 0 10px 28px rgba(0, 0, 0, 0.24);
+  --rs-accent: #6c5ce7;
+  --rs-accent-ig: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+  --rs-text: #222222;
+  --rs-transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#rs-root {
+  position: fixed;
+  top: 90px;
+  right: 24px;
+  z-index: 2147483647; /* stay above Instagram's own UI */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  user-select: none;
+}
+
+/* ---------- Logo / toggle button ---------- */
+#rs-logo-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--rs-radius-full);
+  background: var(--rs-bg);
+  box-shadow: var(--rs-shadow);
+  border: none;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  overflow: hidden;
+  transition: transform var(--rs-transition), box-shadow var(--rs-transition);
+}
+
+#rs-logo-btn:hover {
+  transform: scale(1.06);
+  box-shadow: var(--rs-shadow-hover);
+}
+
+#rs-logo-btn.rs-dragging {
+  cursor: grabbing;
+  transform: scale(1.1);
+}
+
+#rs-logo-btn img {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--rs-radius-full);
+  object-fit: cover;
+  pointer-events: none; /* clicks/drag handled by the button itself */
+}
+
+/* ---------- Drawer ---------- */
+#rs-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--rs-bg);
+  border-radius: var(--rs-radius-lg);
+  box-shadow: var(--rs-shadow);
+  width: 140px;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transform: translateY(-6px) scale(0.96);
+  transform-origin: top right;
+  transition:
+    max-height var(--rs-transition),
+    opacity var(--rs-transition),
+    transform var(--rs-transition);
+  pointer-events: none;
+}
+
+#rs-root.rs-open #rs-drawer {
+  max-height: 260px;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+/* ---------- Tool buttons inside drawer ---------- */
+.rs-tool-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  border-radius: var(--rs-radius-md);
+  padding: 9px 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--rs-text);
+  background: var(--rs-bg-soft);
+  cursor: pointer;
+  transition: transform var(--rs-transition), background var(--rs-transition), box-shadow var(--rs-transition);
+}
+
+.rs-tool-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.rs-tool-btn:active {
+  transform: translateY(0);
+}
+
+.rs-tool-btn .rs-icon-wrap {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.rs-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  display: block;
+}
+
+.rs-tool-btn.rs-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.rs-tool-btn.rs-loading .rs-icon-wrap {
+  animation: rs-spin 0.9s linear infinite;
+}
+
+@keyframes rs-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ---------- Status line ---------- */
+#rs-status {
+  font-size: 12px;
+  color: #666;
+  text-align: center;
+  border-radius: var(--rs-radius-md);
+  padding: 6px 8px;
+  background: var(--rs-bg-soft);
+  min-height: 14px;
+  transition: background var(--rs-transition), color var(--rs-transition);
+}
+
+#rs-status.rs-success {
+  background: #e6f9ec;
+  color: #1a9c4d;
+}
+
+#rs-status.rs-error {
+  background: #fdeaea;
+  color: #d13a3a;
+}
+
+/* ---------- Drag "snap edge" hint ---------- */
+#rs-root.rs-dragging #rs-drawer {
+  pointer-events: none;
+}
+
+.rs-icon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  display: block;
+}

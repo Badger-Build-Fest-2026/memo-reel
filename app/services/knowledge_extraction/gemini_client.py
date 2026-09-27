@@ -163,14 +163,18 @@ def extract_structured_knowledge(
     client = genai.Client(api_key=api_key)
 
     parts = _build_prompt_parts(bundle)
-    response = client.models.generate_content(
-        model=model_name,
-        contents=parts,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=GeneratedKnowledge,
-        ),
-    )
+    try:
+        response = client.models.generate_content(
+            model=model_name,
+            contents=parts,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=GeneratedKnowledge,
+            ),
+        )
+    except Exception as error:
+        print("Gemini API call failed:", str(error))
+        raise RuntimeError("Gemini knowledge extraction failed") from error
 
     # response.parsed is already a validated GeneratedKnowledge instance
     # when response_schema is a Pydantic model - no manual json.loads needed.
