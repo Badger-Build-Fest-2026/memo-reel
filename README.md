@@ -17,7 +17,8 @@ docker compose up --build -d --wait
 ```
 
 The API is available on your computer at `http://localhost:8000` and
-`http://localhost:8000/docs`. Redis stays private to the Compose network; the
+`http://localhost:8000/docs`. If port 8000 is already in use, change
+`API_PORT` in `.env` (for example, to `8001`). Redis stays private to the Compose network; the
 API and worker connect to it using the internal Docker hostname `redis:6379`,
 which Compose configures automatically. To check Redis, run
 `docker compose exec redis redis-cli ping`. The `migrate` service creates the
@@ -43,10 +44,10 @@ To stop the stack:
 docker compose down
 ```
 
-The Celery worker runs with a maximum concurrency of two tasks. For a local
-smoke test before the real content-bundle integration exists, set
-`WORKER_EXTRACTION_MODE=mock` in `.env` before starting the stack. Keep database
-and provider credentials in `.env`; never commit them.
+The Celery worker runs with a maximum concurrency of two tasks. Set
+`WORKER_EXTRACTION_MODE=mock` in `.env` only for a pipeline smoke test; normal
+operation downloads and processes the Reel. Keep database and provider
+credentials in `.env`; never commit them.
 
 ### Environment variables
 
@@ -57,13 +58,21 @@ and provider credentials in `.env`; never commit them.
 - `REDIS_URL` (optional): Celery broker URL; Compose overrides it inside the
   containers to `redis://redis:6379/0`. When running the API/worker directly on
   your host, use `redis://localhost:6379/0`.
+- `API_PORT` (optional): host port exposed by the Compose API service; defaults
+  to `8000`.
 - `WORKER_ERROR_LOG` (optional): append-only local file for safe worker error
   diagnostics; defaults to `worker-errors.log`.
 - `WORKER_EXTRACTION_MODE` (optional): `mock` runs a harmless mock extractor
   that logs the received capture ID without persisting output; defaults to
-  `live`, which currently requires the reel content-bundle preparation stage.
-- `GEMINI_API_KEY` (optional): required by the existing standalone Gemini
-  knowledge-extraction client when a prepared content bundle is available.
+  `live`, which downloads and processes the Reel.
+- `PIPELINE_MEDIA_DIR` (optional): local directory for downloaded videos and
+  per-capture output; defaults to `media`. Compose mounts the project `media/`
+  directory into the worker at `/app/media`.
+- `INSTAGRAM_COOKIES_FILE` (optional): private Netscape-format cookie file for
+  Instagram downloads that require a signed-in session. In Docker, place it
+  under `media/` so the worker can read it. Never commit this file.
+- `GEMINI_API_KEY` (required for live extraction): used by the existing Gemini
+  knowledge-extraction client. Add it to `.env` without committing the key.
 - `SQLALCHEMY_ECHO` (optional, defaults to `false`): set to `true` to log SQL
   statements.
 - `DB_DISABLE_PREPARED_STATEMENTS` (optional, defaults to `false`): set to
@@ -117,7 +126,7 @@ psql "$DATABRICKS_DATABASE_URL" -f migrations/20260926_add_capture_job_state.sql
 
 ### Worker behavior and recovery
 
-Workers atomically claim eligible `queued` captures, set a 30-minute processing
+Workers atomically claim eligible `queued` captures, set a two-hour processing
 lease, and release the transaction before calling the extraction service.
 Transient extraction failures are retried up to four total attempts with
 exponential backoff capped at five minutes. Captures become `failed` after the
@@ -138,8 +147,8 @@ The worker also runs reconciliation automatically when it starts (up to 10,000
 recoverable captures per startup), so rows left `queued` in PostgreSQL are
 re-enqueued after a worker restart.
 
-To verify that a capture reaches the extraction function before the real
-content-bundle integration exists, set this in `.env`:
+To verify scheduling without downloading a Reel or calling Gemini, set this in
+`.env`:
 
 ```env
 WORKER_EXTRACTION_MODE=mock
@@ -147,8 +156,8 @@ WORKER_EXTRACTION_MODE=mock
 
 Restart the worker and watch its logs for `Mock knowledge extraction received
 capture_id=...`. Captures processed in mock mode transition to `completed`;
-the mock output itself is not saved. Unset it or restore `live` when the actual
-extraction integration is ready.
+the mock output itself is not saved. Restore `live` to run the downloader and
+full pipeline.
 
 Verify a capture by polling the status endpoint using the `capture_id` returned
 by `/submit`:
@@ -157,14 +166,24 @@ by `/submit`:
 curl http://127.0.0.1:8000/api/v1/reels/status/<capture_id>
 ```
 
-The repository has a Gemini client for an already-prepared `ContentBundle`, but
-the backend currently receives only a Reel URL/caption and has no Reel download
-or content-bundle preparation stage. Accordingly, the worker calls the
-replaceable `run_knowledge_extraction(capture)` boundary; until that upstream
-preparation is connected, its explicit configuration error is retried and
-eventually reflected by the `failed` status and local worker error log. No
-knowledge result or error message is stored in PostgreSQL.
-The extraction schema and prompt remain unchanged.
+In live mode the worker downloads the source URL to
+`media/videos/<capture_id>.*`, calls the existing `process_reel` pipeline with
+the local video and submitted Reel metadata, and saves the generated JSON under
+`media/output/<capture_id>/`. These files are visible in the project directory
+when running through Docker Compose; the JSON result is not stored in
+PostgreSQL.
+
+Instagram may require a signed-in session to download a Reel. If yt-dlp cannot
+download a Reel anonymously, provide a private Netscape-format browser cookie
+file in `media/instagram-cookies.txt` and set this in `.env`:
+
+```env
+INSTAGRAM_COOKIES_FILE=/app/media/instagram-cookies.txt
+```
+
+The worker reads cookies locally; they are never included in the Celery
+message. Download or pipeline failures follow the configured retries and are
+recorded in the local worker error log.
 
 ## Databricks PostgreSQL database
 

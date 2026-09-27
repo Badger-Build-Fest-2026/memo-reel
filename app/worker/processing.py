@@ -1,3 +1,4 @@
+import inspect
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -15,7 +16,7 @@ from app.worker.extraction import run_knowledge_extraction
 logger = logging.getLogger(__name__)
 
 MAX_ATTEMPTS = 4
-PROCESSING_LEASE = timedelta(minutes=30)
+PROCESSING_LEASE = timedelta(hours=2)
 
 
 @dataclass(frozen=True)
@@ -86,7 +87,9 @@ async def process_capture(
 
     attempt_count = claimed.attempt_count
     try:
-        (extractor or run_knowledge_extraction)(claimed)
+        extraction = (extractor or run_knowledge_extraction)(claimed)
+        if inspect.isawaitable(extraction):
+            await extraction
     except Exception as error:
         terminal = attempt_count >= MAX_ATTEMPTS
         state = "failed" if terminal else "queued"
