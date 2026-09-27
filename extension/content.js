@@ -15,20 +15,24 @@
   root.innerHTML = `
     <div id="rs-drawer">
       <button id="rs-save-btn" class="rs-tool-btn" title="Save this Reel">
-        <span class="rs-icon-wrap">📥</span>
-        <span class="rs-label">Save Reel</span>
+        <span class="rs-icon-wrap">
+          <img src="${chrome.runtime.getURL("assets/memorize.png")}" alt="" class="rs-icon">
+        </span>
+        <span class="rs-label">Memorise</span>
       </button>
 
       <button id="rs-redirect-btn" class="rs-tool-btn" title="Open your dashboard">
-        <span class="rs-icon-wrap">📊</span>
-        <span class="rs-label">Open Dashboard</span>
+        <span class="rs-icon-wrap">
+          <img src="${chrome.runtime.getURL("assets/explore.png")}" alt="" class="rs-icon">
+        </span>
+        <span class="rs-label">Explore</span>
       </button>
 
       <div id="rs-status"></div>
     </div>
 
     <button id="rs-logo-btn" title="Reel Saver">
-      <img src="${chrome.runtime.getURL("logo.png")}" alt="Reel Saver" />
+      <img src="${chrome.runtime.getURL("assets/logo.png")}" alt="Reel Saver" />
     </button>
   `;
 

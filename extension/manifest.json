@@ -32,7 +32,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["logo.png", "reelExtractor.js"],
+      "resources": ["assets/logo.png", "reelExtractor.js", "assets/memorize.png", "assets/explore.png"],
       "matches": ["https://www.instagram.com/*"]
     }
   ]

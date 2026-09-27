@@ -74,7 +74,7 @@
   background: var(--rs-bg);
   border-radius: var(--rs-radius-lg);
   box-shadow: var(--rs-shadow);
-  width: 220px;
+  width: 140px;
   max-height: 0;
   opacity: 0;
   overflow: hidden;
@@ -98,11 +98,11 @@
 .rs-tool-btn {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
   border: none;
   border-radius: var(--rs-radius-md);
-  padding: 10px 14px;
+  padding: 9px 6px;
   font-size: 14px;
   font-weight: 600;
   color: var(--rs-text);
@@ -123,21 +123,19 @@
 .rs-tool-btn .rs-icon-wrap {
   width: 30px;
   height: 30px;
-  border-radius: var(--rs-radius-full);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  font-size: 16px;
-  color: #fff;
+  background: transparent;
+  padding: 0;
 }
 
-#rs-save-btn .rs-icon-wrap {
-  background: var(--rs-accent-ig);
-}
-
-#rs-redirect-btn .rs-icon-wrap {
-  background: var(--rs-accent);
+.rs-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  display: block;
 }
 
 .rs-tool-btn.rs-disabled {
@@ -180,4 +178,11 @@
 /* ---------- Drag "snap edge" hint ---------- */
 #rs-root.rs-dragging #rs-drawer {
   pointer-events: none;
+}
+
+.rs-icon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  display: block;
 }
