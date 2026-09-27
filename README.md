@@ -8,13 +8,13 @@ FastAPI starter for RecallGraph.
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-export DATABASE_URL='postgresql+asyncpg://postgres:postgres@localhost:5432/recallgraph'
+export SUPABASE_DATABASE_URL='postgresql+asyncpg://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres'
 uvicorn app.main:app --reload
 ```
 
 The API checks the database connection at startup by running `SELECT 1`. If
-`DATABASE_URL` is missing or Postgres is unreachable, startup fails before the
-app accepts requests.
+`SUPABASE_DATABASE_URL` is missing or Supabase is unreachable, startup fails
+before the app accepts requests.
 
 The API docs are available at `http://127.0.0.1:8000/docs`.
 
@@ -38,18 +38,20 @@ curl -X POST http://127.0.0.1:8000/api/v1/reels/submit \
         }'
 ```
 
-The API validates the Reel URL and capture mode, creates a queued capture job,
-and returns a `capture_id`.
+The API validates the Reel URL, creates a queued capture job, and returns a
+`capture_id`.
 
 ## Database
 
-Run this in Postgres before starting the API:
+Run this in the Supabase SQL Editor before starting the API:
 
 ```sql
-CREATE TABLE IF NOT EXISTS reel_submissions (
+CREATE TABLE IF NOT EXISTS submissions (
 	capture_id UUID PRIMARY KEY,
+	user_id VARCHAR(255) NOT NULL,
+	account_name VARCHAR(255) NOT NULL,
 	source_url VARCHAR(2048) NOT NULL,
-	capture_mode VARCHAR(64) NOT NULL CHECK (capture_mode IN ('selected_content')),
+	hashtags TEXT NOT NULL DEFAULT '',
 	caption TEXT NOT NULL DEFAULT '',
 	requested_at TIMESTAMPTZ NOT NULL,
 	status VARCHAR(32) NOT NULL DEFAULT 'queued',
@@ -57,6 +59,13 @@ CREATE TABLE IF NOT EXISTS reel_submissions (
 	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS ix_reel_submissions_source_url
-	ON reel_submissions (source_url);
+CREATE INDEX IF NOT EXISTS ix_submissions_source_url
+	ON submissions (source_url);
 ```
+
+Supabase provisions the Postgres database for the project, so you do not need to
+run `CREATE DATABASE`. For direct connection, use the `db.<project-ref>.supabase.co`
+host on port `5432`. You can paste either Supabase's plain `postgresql://...`
+connection string or the SQLAlchemy-style `postgresql+asyncpg://...` URL into
+`SUPABASE_DATABASE_URL`; the app converts plain `postgresql://...` URLs to
+asyncpg automatically.

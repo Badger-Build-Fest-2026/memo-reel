@@ -12,8 +12,10 @@ async def submit_reel(
 ) -> ReelSubmissionResponse:
     submission = ReelSubmission(
         capture_id=str(uuid.uuid4()),
+        user_id=request.user_id,
+        account_name=request.account_name,
         source_url=request.source_url,
-        capture_mode=request.capture_mode.value,
+        hashtags=request.hashtags,
         caption=request.caption,
         requested_at=request.requested_at,
         status="queued",
@@ -26,8 +28,8 @@ async def submit_reel(
     return ReelSubmissionResponse(
         status=submission.status,
         capture_id=submission.capture_id,
+        user_id=submission.user_id,
         job_status=submission.job_status,
         source_url=submission.source_url,
-        capture_mode=submission.capture_mode,
         requested_at=submission.requested_at,
     )

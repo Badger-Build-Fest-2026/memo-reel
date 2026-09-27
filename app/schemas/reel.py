@@ -1,6 +1,5 @@
 import re
 from datetime import datetime
-from enum import Enum
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -8,10 +7,6 @@ from pydantic import BaseModel, ConfigDict, field_validator
 _INSTAGRAM_REEL_URL = re.compile(
     r"https://www\.instagram\.com/reels?/([A-Za-z0-9_-]+)/?(?:\?.*)?"
 )
-
-
-class CaptureMode(str, Enum):
-    selected_content = "selected_content"
 
 
 class ReelSubmissionRequest(BaseModel):
@@ -50,7 +45,7 @@ class ReelSubmissionRequest(BaseModel):
 class ReelSubmissionResponse(BaseModel):
     status: str = "queued"
     capture_id: str
+    user_id: str
     job_status: str = "queued"
     source_url: str
-    capture_mode: CaptureMode
     requested_at: datetime
