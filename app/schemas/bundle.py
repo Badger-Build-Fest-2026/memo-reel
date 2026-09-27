@@ -22,3 +22,10 @@ class ContentBundle(BaseModel):
     language: str | None = None
     full_transcript: str
     moments: list[ContentMoment]
+
+    # Instagram metadata — not derivable from the video itself, must
+    # come from whatever captures the reel (Chrome extension / capture
+    # layer). Optional here so this module stays testable standalone.
+    reel_url: str | None = None
+    caption: str | None = None
+    saved_at: str | None = None   # ISO timestamp of when the user saved the reel

@@ -14,7 +14,7 @@ load_dotenv()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await check_db_connection()
-    await initialize_database()
+    # await initialize_database()
     yield
 
 

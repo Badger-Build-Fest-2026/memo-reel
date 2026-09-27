@@ -1,0 +1,16 @@
+.git
+.venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.env
+.env.*
+!.env.example
+worker-errors.log
+logs
+media
+output
+*cookies*.json
+*.cookies
+cookies.txt

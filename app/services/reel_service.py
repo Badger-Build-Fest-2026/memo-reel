@@ -16,11 +16,13 @@ def submission_response(submission: ReelSubmission) -> ReelSubmissionResponse:
         job_status=submission.job_status,
         source_url=submission.source_url,
         requested_at=submission.requested_at,
+        updated_at=submission.updated_at,
     )
 
 
 async def submit_reel(
     request: ReelSubmissionRequest,
+    capture_id: str,
     db: AsyncSession,
 ) -> ReelSubmissionResponse:
     canonical_url = f"https://www.instagram.com/reel/{request.reel_id}/"
@@ -31,7 +33,7 @@ async def submit_reel(
         return submission_response(existing_submission)
 
     submission = ReelSubmission(
-        capture_id=str(uuid.uuid4()),
+        capture_id=capture_id,
         user_id=request.user_id,
         account_name=request.account_name,
         source_url=request.source_url,
