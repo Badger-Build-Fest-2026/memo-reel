@@ -1,19 +1,39 @@
 {
-  "name": "RecallGraph",
-  "description": "Sends the current page URL and a unique user ID to a FastAPI backend.",
-  "version": "1.0",
   "manifest_version": 3,
+  "name": "Reel Saver",
+  "version": "1.0.0",
+  "description": "Save Instagram Reels and jump to your dashboard, from a draggable in-page drawer.",
+  "icons": {
+    "16": "logo.png",
+    "48": "logo.png",
+    "128": "logo.png"
+  },
   "action": {
-    "default_popup": "popup.html",
-    "default_icon": "Hi.png"
+    "default_icon": "logo.png",
+    "default_title": "Reel Saver"
   },
   "permissions": [
     "activeTab",
-    "storage",
-    "scripting"
+    "scripting",
+    "storage"
   ],
   "host_permissions": [
-    "http://localhost:8000/*",
-    "https://www.instagram.com/*"
+    "https://www.instagram.com/*",
+    "http://0.0.0.0:8287/*",
+    "http://localhost:8287/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://www.instagram.com/*"],
+      "js": ["reelExtractor.js", "reel-actions.js", "drawer-effects.js", "content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["logo.png", "reelExtractor.js"],
+      "matches": ["https://www.instagram.com/*"]
+    }
   ]
 }

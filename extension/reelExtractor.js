@@ -9,7 +9,7 @@
  *   hashtags: string[]
  * }
  */
-function extractInstagramReel() {
+function extractReelData() {
 
   // ------------------------------------------------------------
   // 1. Find the Reel link
@@ -189,4 +189,4 @@ function extractInstagramReel() {
   return result;
 }
 
-extractInstagramReel();
+// extractInstagramReel();
