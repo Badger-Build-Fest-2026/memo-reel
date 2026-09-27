@@ -220,5 +220,20 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+<<<<<<< HEAD
 #Media
 /media/*
+=======
+.env
+__pycache__/
+*.pyc
+
+data/
+scripts/
+.env
+__pycache__/
+*.pyc
+>>>>>>> agent-graphrag
+
+scripts/make_dummy_data.py
+data/*.jsonl
