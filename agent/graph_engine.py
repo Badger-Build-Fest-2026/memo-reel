@@ -2,13 +2,13 @@
 
 Finalized Lakebase 4-Tier Knowledge Graph Topology:
 Category -> Subcategory -> Concept -> Reel
-With Category Bridges and Cross-Subcategory Bridges.
+With Category Bridges, Cross-Subcategory Bridges, and Resource Nodes.
 """
 
 from __future__ import annotations
 
-import json
 from collections import deque
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import networkx as nx
@@ -25,368 +25,456 @@ CATEGORY_MAP = {
 
 # Domain bridges between categories that share conceptual boundaries
 CATEGORY_BRIDGES = [
-    ("food", "fitness"),    # Nutrition / high protein meals & hypertrophy / health
-    ("teched", "shop"),     # Technology & developer tools / software products
+    ("food", "fitness"),
+    ("teched", "shop"),
 ]
 
-# Conceptual bridges between subcategories touching related engineering & lifestyle disciplines
+# Conceptual bridges between subcategories touching related engineering disciplines
 SUBCATEGORY_BRIDGES = [
-    ("Data Science", "System Design"),   # Production ML pipelines, feature stores & real-time systems
+    ("Data Science", "System Design"),
 ]
 
-# Downward tier ladder, used to enforce ONE-WAY traversal. Topic expansion may
-# only move from a lower rank to a higher rank and may NEVER pass through a
-# Category anchor. Without this guard, hopping
-# (Subcategory) -> (Category) -> (sibling Subcategory) leaks unrelated branches
-# into each other's results (e.g. "System Design" surfacing "Data Science").
 TIER_ORDER = {"category": 0, "subcategory": 1, "concept": 2, "reel": 3}
 
 
 class ReelGraphEngine:
-    """Graph engine representing multimodal Instagram Reels in an anchor-to-leaf hierarchy."""
+  """Graph engine representing multimodal Instagram Reels in an anchor-to-leaf hierarchy."""
 
-    def __init__(self, data_source: Optional[str] = None):
-        """Initializes graph and optionally loads records from a data source."""
-        self.graph = nx.Graph()
-        self.reels: Dict[str, dict] = {}
+  def __init__(self, data_source: Optional[Any] = None):
+    self.graph = nx.Graph()
+    self.reels: Dict[str, dict] = {}
 
-        if data_source and str(data_source).endswith(".jsonl"):
-            self.load_from_jsonl(data_source)
+    if isinstance(data_source, (str, Path)):
+      path_str = str(data_source)
+      if (
+          path_str.endswith(".jsonl")
+          or path_str.endswith(".json")
+          or Path(path_str).is_file()
+      ):
+        self.load_from_jsonl(path_str)
+    elif isinstance(data_source, list):
+      self._populate_graph(data_source)
 
-    def load_from_jsonl(self, jsonl_path: str | Path) -> None:
-        """Parses each line into a dict and populates the graph."""
-        path = Path(jsonl_path)
-        if not path.is_file():
-            raise FileNotFoundError(f"JSONL file not found: {path}")
+  def load_from_jsonl(self, jsonl_path: str | Path) -> None:
+    path = Path(jsonl_path)
+    if not path.is_file():
+      raise FileNotFoundError(f"File not found: {path}")
 
-        records: List[dict] = []
-        with path.open("r", encoding="utf-8") as f:
-            for line in f:
-                clean_line = line.strip()
-                if not clean_line:
-                    continue
-                records.append(json.loads(clean_line))
+    records: List[dict] = []
+    with path.open("r", encoding="utf-8") as f:
+      content = f.read().strip()
+      if content.startswith("["):
+        records = json.loads(content)
+      else:
+        for line in content.splitlines():
+          clean_line = line.strip()
+          if clean_line:
+            records.append(json.loads(clean_line))
 
-        self._populate_graph(records)
+    self._populate_graph(records)
 
-    def load_from_lakebase(self, connection_params_or_conn: Any) -> None:
-        """Explicit stub ready to connect to Lakebase Postgres with SELECT ... later."""
-        # Query pattern:
-        # SELECT user_id, capture_id, title, category, category_label, subcategory,
-        #        concept, summary, recipe, product_list, link, captions, transcription,
-        #        timestamp, obsidian_url FROM reels;
-        raise NotImplementedError(
-            "Lakebase Postgres connection is not yet configured. Local JSONL data source is supported."
-        )
+  def load_from_lakebase(
+      self,
+      connection_params_or_conn: Any,
+      table_name: str = "buildfest_app.reels_knowledge",
+  ) -> None:
+    """Ingests records directly from Databricks Lakebase Postgres."""
+    if connection_params_or_conn is None:
+      raise NotImplementedError(
+          "Lakebase Postgres connection is not yet configured. Local data"
+          " source is supported."
+      )
 
-    @staticmethod
-    def _node_id(node_type: str, raw_name: str) -> str:
-        """Helper to create namespaced node identifiers."""
-        return f"{node_type}:{raw_name}"
+    query = (
+        "SELECT capture_id, user_id, requested_at, category, knowledge_json"
+        f" FROM {table_name};"
+    )
+    cursor = connection_params_or_conn.cursor()
+    cursor.execute(query)
+    rows = cursor.fetchall()
 
-    def _populate_graph(self, records: List[dict]) -> None:
-        """Populates graph from raw reel records keyed by unique link or title."""
-        self.graph.clear()
-        self.reels.clear()
+    records = []
+    for row in rows:
+      if isinstance(row, dict):
+        rec = row
+      else:
+        rec = {
+            "capture_id": row[0],
+            "user_id": row[1],
+            "requested_at": str(row[2]),
+            "category": row[3],
+            "knowledge_json": (
+                json.loads(row[4]) if isinstance(row[4], str) else row[4]
+            ),
+        }
+      records.append(rec)
 
-        for record in records:
-            # Key uniquely by link (fallback to title)
-            reel_key = record.get("link") or record.get("title")
-            if not reel_key:
-                continue
-            self.reels[reel_key] = record
-            # Also store by title for quick lookup
-            if record.get("title") and record["title"] != reel_key:
-                self.reels[record["title"]] = record
+    self._populate_graph(records)
 
-            # 1. Category Node (Anchor)
-            cat_code = record.get("category", "other")
-            cat_label = record.get("category_label") or CATEGORY_MAP.get(cat_code, cat_code.title())
-            cat_node = self._node_id("category", cat_code)
-            if not self.graph.has_node(cat_node):
-                self.graph.add_node(
-                    cat_node,
-                    node_type="category",
-                    category_code=cat_code,
-                    name=cat_label,
-                    label=cat_label,
-                )
+  @staticmethod
+  def _node_id(node_type: str, raw_name: str) -> str:
+    return f"{node_type}:{raw_name}"
 
-            # 2. Subcategory Node
-            subcat_name = record.get("subcategory") or "General"
-            subcat_node = self._node_id("subcategory", subcat_name)
-            if not self.graph.has_node(subcat_node):
-                self.graph.add_node(
-                    subcat_node,
-                    node_type="subcategory",
-                    name=subcat_name,
-                    label=subcat_name,
-                    category=cat_code,
-                )
-            # Edge: (Category) -[:HAS_SUBCAT]-> (Subcategory)
-            self.graph.add_edge(cat_node, subcat_node, relation="HAS_SUBCAT")
+  def _populate_graph(self, records: List[dict]) -> None:
+    self.graph.clear()
+    self.reels.clear()
 
-            # 3. Concept Node
-            concept_name = record.get("concept") or record.get("title")
-            concept_node = self._node_id("concept", concept_name)
-            if not self.graph.has_node(concept_node):
-                self.graph.add_node(
-                    concept_node,
-                    node_type="concept",
-                    name=concept_name,
-                    label=concept_name,
-                    subcategory=subcat_name,
-                )
-            # Edge: (Subcategory) -[:HAS_CONCEPT]-> (Concept)
-            self.graph.add_edge(subcat_node, concept_node, relation="HAS_CONCEPT")
+    for raw_record in records:
+      kj = raw_record.get("knowledge_json") or {}
 
-            # 4. Reel Node (Leaf)
-            reel_node = self._node_id("reel", reel_key)
-            self.graph.add_node(
-                reel_node,
-                node_type="reel",
-                id=reel_key,
-                name=record.get("title", ""),
-                label=record.get("title", ""),
-                title=record.get("title", ""),
-                url=record.get("link", ""),
-                link=record.get("link", ""),
-                summary=record.get("summary", ""),
-                recipe=record.get("recipe"),
-                product_list=record.get("product_list"),
-                obsidian_url=record.get("obsidian_url", ""),
-                category=cat_code,
-                subcategory=subcat_name,
-                concept=concept_name,
-            )
-            # Edge: (Concept) -[:FEATURED_IN]-> (Reel)
-            self.graph.add_edge(concept_node, reel_node, relation="FEATURED_IN")
+      cid = raw_record.get("capture_id")
+      title = kj.get("title") or raw_record.get("title", "")
+      reel_url = (
+          kj.get("reel_url")
+          or raw_record.get("link")
+          or raw_record.get("reel_url", "")
+      )
+      cat_code = raw_record.get("category") or kj.get("category", "other")
+      subcat_name = (
+          kj.get("subcategory")
+          or raw_record.get("subcategory")
+          or "General"
+      )
+      summary = kj.get("summary") or raw_record.get("summary", "")
+      transcript = (
+          kj.get("transcript")
+          or raw_record.get("transcription")
+          or raw_record.get("transcript", "")
+      )
+      recipe = kj.get("recipe") or raw_record.get("recipe")
+      product_list = kj.get("product_list") or raw_record.get("product_list")
+      obsidian_url = raw_record.get("obsidian_url") or kj.get(
+          "obsidian_url", ""
+      )
 
-        # 5. Category Bridges: Connect categories that share conceptual boundaries
-        for cat_a, cat_b in CATEGORY_BRIDGES:
-            node_a = self._node_id("category", cat_a)
-            node_b = self._node_id("category", cat_b)
-            if self.graph.has_node(node_a) and self.graph.has_node(node_b):
-                self.graph.add_edge(node_a, node_b, relation="BRIDGES_TO")
-
-        # 6. Cross-Subcategory Bridges: Connect subcategories touching related disciplines
-        for sub_a, sub_b in SUBCATEGORY_BRIDGES:
-            node_a = self._node_id("subcategory", sub_a)
-            node_b = self._node_id("subcategory", sub_b)
-            if self.graph.has_node(node_a) and self.graph.has_node(node_b):
-                self.graph.add_edge(node_a, node_b, relation="CROSS_SUBCAT_BRIDGE")
-
-    def get_reel(self, identifier: str) -> Optional[dict]:
-        """Returns raw reel record by link or title."""
-        if not identifier:
-            return None
-        # Check direct lookup
-        if identifier in self.reels:
-            return self.reels[identifier]
-        clean = identifier.replace("reel:", "").strip()
-        if clean in self.reels:
-            return self.reels[clean]
-        # Case-insensitive title / link search
-        clean_lower = clean.lower()
-        for key, reel in self.reels.items():
-            if (
-                key.lower() == clean_lower
-                or reel.get("title", "").lower() == clean_lower
-                or reel.get("link", "").lower() == clean_lower
-            ):
-                return reel
-        return None
-
-    def _subcategory_of(self, node: str) -> Optional[str]:
-        """Resolve the subcategory node that owns a concept/reel/subcategory node."""
-        node_type = self.graph.nodes[node].get("node_type")
-
-        if node_type == "subcategory":
-            return node
-
-        if node_type == "concept":
-            for neighbor in self.graph.neighbors(node):
-                if self.graph.nodes[neighbor].get("node_type") == "subcategory":
-                    return neighbor
-            return None
-
-        if node_type == "reel":
-            # Prefer the attribute recorded at ingest time.
-            subcat_name = self.graph.nodes[node].get("subcategory")
-            if subcat_name:
-                candidate = self._node_id("subcategory", subcat_name)
-                if self.graph.has_node(candidate):
-                    return candidate
-            for neighbor in self.graph.neighbors(node):
-                if self.graph.nodes[neighbor].get("node_type") == "concept":
-                    return self._subcategory_of(neighbor)
-            return None
-
-        return None
-
-    def get_related_topics(self, topic_name: str) -> List[str]:
-        """Return topics related to ``topic_name`` by walking strictly DOWNWARD.
-
-        Allowed one-way path (anchor -> leaf)::
-
-            (Category) -> (Subcategory) -> (Concept) -> (Reel)
-
-        Traversal is anchored on exactly one resolved subcategory, so results can
-        never bleed across sibling branches. It is FORBIDDEN to climb from a
-        Subcategory/Concept up into a Category node, because
-        ``(Subcategory) -> (Category) -> (sibling Subcategory)`` links unrelated
-        branches (e.g. "System Design" would otherwise surface "Data Science"
-        through "Technology & Education").
-
-        Same-tier ``CROSS_SUBCAT_BRIDGE`` edges are intentionally NOT followed
-        here: they remain in the graph for visual exploration but must not widen
-        retrieval scope.
-        """
-        normalized = topic_name.strip().lower()
-        start_nodes = [
-            node
-            for node, data in self.graph.nodes(data=True)
-            if normalized in str(data.get("name", node)).lower()
-            or str(data.get("name", node)).lower() in normalized
+      # Extract concepts safely
+      raw_concepts_obj = kj.get("concepts") or raw_record.get("concept")
+      concept_names: List[str] = []
+      if isinstance(raw_concepts_obj, dict):
+        c_list = raw_concepts_obj.get("concepts") or []
+        concept_names = [
+            c["name"] for c in c_list if isinstance(c, dict) and "name" in c
         ]
-        if not start_nodes:
-            return []
+      elif isinstance(raw_concepts_obj, list):
+        concept_names = [
+            c if isinstance(c, str) else c.get("name")
+            for c in raw_concepts_obj
+            if c
+        ]
+      elif isinstance(raw_concepts_obj, str) and raw_concepts_obj:
+        concept_names = [raw_concepts_obj]
 
-        include_anchor = any(
-            self.graph.nodes[n].get("node_type") == "category" for n in start_nodes
+      primary_concept = concept_names[0] if concept_names else title
+
+      # Clean resource URLs (handles both [{"url": "..."}] and ["https://..."])
+      raw_links = kj.get("links") or raw_record.get("resource_urls") or []
+      resource_urls: List[str] = []
+      for item in raw_links:
+        if isinstance(item, dict) and "url" in item:
+          resource_urls.append(item["url"])
+        elif isinstance(item, str):
+          resource_urls.append(item)
+
+      # Build unified flat record for lookup tools
+      normalized_record = {
+          "capture_id": cid,
+          "title": title,
+          "link": reel_url,
+          "url": reel_url,
+          "category": cat_code,
+          "category_label": (
+              raw_record.get("category_label")
+              or CATEGORY_MAP.get(cat_code, cat_code.title())
+          ),
+          "subcategory": subcat_name,
+          "concept": primary_concept,
+          "concepts": concept_names,
+          "summary": summary,
+          "transcription": transcript,
+          "recipe": recipe,
+          "product_list": product_list,
+          "obsidian_url": obsidian_url,
+          "resource_urls": resource_urls,
+          "evidence": kj.get("evidence", []),
+      }
+
+      primary_key = cid or reel_url or title
+      self.reels[primary_key] = normalized_record
+      if title and title != primary_key:
+        self.reels[title] = normalized_record
+      if reel_url and reel_url != primary_key:
+        self.reels[reel_url] = normalized_record
+      if cid and cid != primary_key:
+        self.reels[cid] = normalized_record
+
+      # 1. Category Node
+      cat_label = normalized_record["category_label"]
+      cat_node = self._node_id("category", cat_code)
+      if not self.graph.has_node(cat_node):
+        self.graph.add_node(
+            cat_node,
+            node_type="category",
+            category_code=cat_code,
+            name=cat_label,
+            label=cat_label,
         )
 
-        # Resolve the anchor subcategory/subcategories, then descend only.
-        anchors: List[str] = []
-        for node in start_nodes:
-            if self.graph.nodes[node].get("node_type") == "category":
-                anchors.extend(
-                    n
-                    for n in self.graph.neighbors(node)
-                    if self.graph.nodes[n].get("node_type") == "subcategory"
-                )
-            else:
-                anchor = self._subcategory_of(node)
-                if anchor:
-                    anchors.append(anchor)
+      # 2. Subcategory Node
+      subcat_node = self._node_id("subcategory", subcat_name)
+      if not self.graph.has_node(subcat_node):
+        self.graph.add_node(
+            subcat_node,
+            node_type="subcategory",
+            name=subcat_name,
+            label=subcat_name,
+            category=cat_code,
+        )
+      self.graph.add_edge(cat_node, subcat_node, relation="HAS_SUBCAT")
 
-        related: set[str] = set()
-        visited: set[str] = set()
-        queue = deque(anchors)
+      # 3. Concept Nodes
+      target_concepts = concept_names if concept_names else [primary_concept]
+      for c_name in target_concepts:
+        if not c_name:
+          continue
+        c_node = self._node_id("concept", c_name)
+        if not self.graph.has_node(c_node):
+          self.graph.add_node(
+              c_node,
+              node_type="concept",
+              name=c_name,
+              label=c_name,
+              subcategory=subcat_name,
+          )
+        self.graph.add_edge(subcat_node, c_node, relation="HAS_CONCEPT")
 
-        while queue:
-            node = queue.popleft()
-            if node in visited:
-                continue
-            visited.add(node)
+      # 4. Reel Node
+      reel_node = self._node_id("reel", primary_key)
+      self.graph.add_node(
+          reel_node, node_type="reel", id=primary_key, **normalized_record
+      )
 
-            node_type = self.graph.nodes[node].get("node_type")
-            node_tier = TIER_ORDER.get(node_type, -1)
+      # Edge from concepts to reel
+      for c_name in target_concepts:
+        if not c_name:
+          continue
+        c_node = self._node_id("concept", c_name)
+        self.graph.add_edge(c_node, reel_node, relation="FEATURED_IN")
 
-            if include_anchor and node_type == "subcategory":
-                related.add(self.graph.nodes[node].get("name", node))
+      # 5. Resource Nodes (Clean array for MCP, zero regex)
+      for url in resource_urls:
+        self.graph.add_node(url, node_type="resource", url=url)
+        self.graph.add_edge(reel_node, url, relation="HAS_RESOURCE")
 
-            for neighbor in self.graph.neighbors(node):
-                neighbor_type = self.graph.nodes[neighbor].get("node_type")
-                neighbor_tier = TIER_ORDER.get(neighbor_type, -1)
-                relation = self.graph.edges[node, neighbor].get("relation", "")
+    # Bridges
+    for cat_a, cat_b in CATEGORY_BRIDGES:
+      node_a = self._node_id("category", cat_a)
+      node_b = self._node_id("category", cat_b)
+      if self.graph.has_node(node_a) and self.graph.has_node(node_b):
+        self.graph.add_edge(node_a, node_b, relation="BRIDGES_TO")
 
-                # NEVER climb upward, and NEVER route through a Category anchor.
-                if neighbor_type == "category" or neighbor_tier <= node_tier:
-                    continue
-                # Only follow the canonical downward relations.
-                if relation not in ("HAS_CONCEPT", "FEATURED_IN"):
-                    continue
+    for sub_a, sub_b in SUBCATEGORY_BRIDGES:
+      node_a = self._node_id("subcategory", sub_a)
+      node_b = self._node_id("subcategory", sub_b)
+      if self.graph.has_node(node_a) and self.graph.has_node(node_b):
+        self.graph.add_edge(node_a, node_b, relation="CROSS_SUBCAT_BRIDGE")
 
-                if neighbor_type == "concept":
-                    related.add(self.graph.nodes[neighbor].get("name", neighbor))
-                queue.append(neighbor)
+  def get_reel(self, identifier: str) -> Optional[dict]:
+    if not identifier:
+      return None
+    if identifier in self.reels:
+      return self.reels[identifier]
+    clean = identifier.replace("reel:", "").strip()
+    if clean in self.reels:
+      return self.reels[clean]
+    clean_lower = clean.lower()
+    for key, reel in self.reels.items():
+      if (
+          key.lower() == clean_lower
+          or reel.get("title", "").lower() == clean_lower
+          or reel.get("link", "").lower() == clean_lower
+      ):
+        return reel
+    return None
 
-        return sorted(related)
+  def get_reel_by_id(self, capture_id: str) -> Optional[dict]:
+    return self.get_reel(capture_id)
 
-    def get_reels_by_subcategory(self, subcategory_name: str) -> List[dict]:
-        """Return every Reel node belonging to ``subcategory_name``.
+  def get_reel_resources(self, identifier: str) -> List[str]:
+    """Returns direct clean resource URLs connected via HAS_RESOURCE edges."""
+    reel = self.get_reel(identifier)
+    if not reel:
+      return []
 
-        Strict single-subcategory lookup: a reel is returned only when its own
-        ``subcategory`` attribute matches exactly (case-insensitive). No sibling
-        subcategory lookup and no category-level widening is performed.
-        """
-        subcat_lower = subcategory_name.strip().lower()
-        matched_reels = []
-        for node, data in self.graph.nodes(data=True):
-            if data.get("node_type") == "reel":
-                reel_subcat = data.get("subcategory", "").strip().lower()
-                if reel_subcat == subcat_lower:
-                    matched_reels.append(data)
-        return matched_reels
+    target_id = (
+        reel.get("capture_id") or reel.get("link") or reel.get("title")
+    )
+    reel_node = self._node_id("reel", target_id)
+    if not self.graph.has_node(reel_node):
+      return reel.get("resource_urls", [])
 
-    def get_reels_by_category(self, category_code_or_name: str) -> List[dict]:
-        """Returns all leaf reels under a given category code or label."""
-        cat_key = category_code_or_name.strip().lower()
-        matched_reels: List[dict] = []
-        seen_links = set()
+    urls = [
+        nbr
+        for nbr in self.graph.neighbors(reel_node)
+        if self.graph.nodes[nbr].get("node_type") == "resource"
+    ]
+    return urls or reel.get("resource_urls", [])
 
-        for reel in self.reels.values():
-            link = reel.get("link")
-            if link in seen_links:
-                continue
-            r_cat = reel.get("category", "").lower()
-            r_label = reel.get("category_label", "").lower()
-            if cat_key in (r_cat, r_label) or cat_key == "all":
-                seen_links.add(link)
-                matched_reels.append(reel)
+  def _subcategory_of(self, node: str) -> Optional[str]:
+    node_type = self.graph.nodes[node].get("node_type")
+    if node_type == "subcategory":
+      return node
+    if node_type == "concept":
+      for neighbor in self.graph.neighbors(node):
+        if self.graph.nodes[neighbor].get("node_type") == "subcategory":
+          return neighbor
+      return None
+    if node_type == "reel":
+      subcat_name = self.graph.nodes[node].get("subcategory")
+      if subcat_name:
+        candidate = self._node_id("subcategory", subcat_name)
+        if self.graph.has_node(candidate):
+          return candidate
+      for neighbor in self.graph.neighbors(node):
+        if self.graph.nodes[neighbor].get("node_type") == "concept":
+          return self._subcategory_of(neighbor)
+      return None
+    return None
 
-        return matched_reels
+  def get_related_topics(self, topic_name: str) -> List[str]:
+    normalized = topic_name.strip().lower()
+    start_nodes = [
+        node
+        for node, data in self.graph.nodes(data=True)
+        if normalized in str(data.get("name", node)).lower()
+        or str(data.get("name", node)).lower() in normalized
+    ]
+    if not start_nodes:
+      return []
 
-    def find_node(self, term: str) -> Optional[dict]:
-        """Dynamically detect whether a search term matches a Category, Subcategory, or Concept."""
-        term_clean = term.strip().lower()
-        # Direct exact match
-        for node_id, data in self.graph.nodes(data=True):
-            node_name = str(data.get("name", "")).strip().lower()
-            if term_clean == node_name:
-                return {"node_id": node_id, **data}
-        
-        # Substring / partial match
-        for node_id, data in self.graph.nodes(data=True):
-            node_name = str(data.get("name", "")).strip().lower()
-            if term_clean in node_name or node_name in term_clean:
-                return {"node_id": node_id, **data}
-        return None
+    include_anchor = any(
+        self.graph.nodes[n].get("node_type") == "category" for n in start_nodes
+    )
+    anchors: List[str] = []
+    for node in start_nodes:
+      if self.graph.nodes[node].get("node_type") == "category":
+        anchors.extend(
+            n
+            for n in self.graph.neighbors(node)
+            if self.graph.nodes[n].get("node_type") == "subcategory"
+        )
+      else:
+        anchor = self._subcategory_of(node)
+        if anchor:
+          anchors.append(anchor)
 
-    def get_subtree_reels(self, start_node_id: str) -> List[dict]:
-        """Descend strictly downward from start_node_id to collect all leaf reels."""
-        if not self.graph.has_node(start_node_id):
-            return []
+    related: set[str] = set()
+    visited: set[str] = set()
+    queue = deque(anchors)
 
-        start_type = self.graph.nodes[start_node_id].get("node_type")
-        start_tier = TIER_ORDER.get(start_type, 0)
-        
-        reels = []
-        visited = set()
-        queue = deque([start_node_id])
+    while queue:
+      node = queue.popleft()
+      if node in visited:
+        continue
+      visited.add(node)
 
-        while queue:
-            curr = queue.popleft()
-            if curr in visited:
-                continue
-            visited.add(curr)
+      node_type = self.graph.nodes[node].get("node_type")
+      node_tier = TIER_ORDER.get(node_type, -1)
 
-            curr_type = self.graph.nodes[curr].get("node_type")
-            if curr_type == "reel":
-                reel_id = self.graph.nodes[curr].get("id") or self.graph.nodes[curr].get("url")
-                reel_obj = self.get_reel(reel_id)
-                if reel_obj:
-                    reels.append(reel_obj)
-                continue
+      if include_anchor and node_type == "subcategory":
+        related.add(self.graph.nodes[node].get("name", node))
 
-            for neighbor in self.graph.neighbors(curr):
-                neighbor_type = self.graph.nodes[neighbor].get("node_type")
-                neighbor_tier = TIER_ORDER.get(neighbor_type, -1)
-                relation = self.graph.edges[curr, neighbor].get("relation", "")
+      for neighbor in self.graph.neighbors(node):
+        neighbor_type = self.graph.nodes[neighbor].get("node_type")
+        neighbor_tier = TIER_ORDER.get(neighbor_type, -1)
+        relation = self.graph.edges[node, neighbor].get("relation", "")
 
-                # Strictly downward: tier must strictly increase, no ascending, no bridges
-                if neighbor_tier > start_tier and relation in ("HAS_SUBCAT", "HAS_CONCEPT", "FEATURED_IN"):
-                    queue.append(neighbor)
+        if neighbor_type == "category" or neighbor_tier <= node_tier:
+          continue
+        if relation not in ("HAS_CONCEPT", "FEATURED_IN"):
+          continue
 
-        return reels
+        if neighbor_type == "concept":
+          related.add(self.graph.nodes[neighbor].get("name", neighbor))
+        queue.append(neighbor)
+
+    return sorted(related)
+
+  def get_reels_by_subcategory(self, subcategory_name: str) -> List[dict]:
+    subcat_lower = subcategory_name.strip().lower()
+    matched_reels = []
+    for _, data in self.graph.nodes(data=True):
+      if data.get("node_type") == "reel":
+        reel_subcat = data.get("subcategory", "").strip().lower()
+        if reel_subcat == subcat_lower:
+          matched_reels.append(data)
+    return matched_reels
+
+  def get_reels_by_category(self, category_code_or_name: str) -> List[dict]:
+    cat_key = category_code_or_name.strip().lower()
+    matched_reels: List[dict] = []
+    seen = set()
+
+    for reel in self.reels.values():
+      uid = reel.get("capture_id") or reel.get("link")
+      if uid in seen:
+        continue
+      r_cat = reel.get("category", "").lower()
+      r_label = reel.get("category_label", "").lower()
+      if cat_key in (r_cat, r_label) or cat_key == "all":
+        seen.add(uid)
+        matched_reels.append(reel)
+
+    return matched_reels
+
+  def find_node(self, term: str) -> Optional[dict]:
+    term_clean = term.strip().lower()
+    for node_id, data in self.graph.nodes(data=True):
+      node_name = str(data.get("name", "")).strip().lower()
+      if term_clean == node_name:
+        return {"node_id": node_id, **data}
+
+    for node_id, data in self.graph.nodes(data=True):
+      node_name = str(data.get("name", "")).strip().lower()
+      if term_clean in node_name or node_name in term_clean:
+        return {"node_id": node_id, **data}
+    return None
+
+  def get_subtree_reels(self, start_node_id: str) -> List[dict]:
+    if not self.graph.has_node(start_node_id):
+      return []
+
+    start_type = self.graph.nodes[start_node_id].get("node_type")
+    start_tier = TIER_ORDER.get(start_type, 0)
+    reels = []
+    visited = set()
+    queue = deque([start_node_id])
+
+    while queue:
+      curr = queue.popleft()
+      if curr in visited:
+        continue
+      visited.add(curr)
+
+      curr_type = self.graph.nodes[curr].get("node_type")
+      if curr_type == "reel":
+        reel_id = self.graph.nodes[curr].get("id") or self.graph.nodes[
+            curr
+        ].get("url")
+        reel_obj = self.get_reel(reel_id)
+        if reel_obj:
+          reels.append(reel_obj)
+        continue
+
+      for neighbor in self.graph.neighbors(curr):
+        neighbor_type = self.graph.nodes[neighbor].get("node_type")
+        neighbor_tier = TIER_ORDER.get(neighbor_type, -1)
+        relation = self.graph.edges[curr, neighbor].get("relation", "")
+
+        if neighbor_tier > start_tier and relation in (
+            "HAS_SUBCAT",
+            "HAS_CONCEPT",
+            "FEATURED_IN",
+        ):
+          queue.append(neighbor)
+
+    return reels
