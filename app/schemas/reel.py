@@ -1,6 +1,5 @@
 import re
 from datetime import datetime
-from enum import Enum
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -8,10 +7,6 @@ from pydantic import BaseModel, ConfigDict, field_validator
 _INSTAGRAM_REEL_URL = re.compile(
     r"https://www\.instagram\.com/reels?/([A-Za-z0-9_-]+)/?(?:\?.*)?"
 )
-
-
-class CaptureMode(str, Enum):
-    selected_content = "selected_content"
 
 
 class ReelSubmissionRequest(BaseModel):
@@ -41,6 +36,13 @@ class ReelSubmissionRequest(BaseModel):
             )
         return f"https://www.instagram.com/reel/{match.group(1)}/"
 
+    @property
+    def reel_id(self) -> str:
+        match = _INSTAGRAM_REEL_URL.fullmatch(self.source_url)
+        if match is None:
+            raise RuntimeError("Validated Reel URL has no Reel identifier")
+        return match.group(1)
+
     @field_validator("caption")
     @classmethod
     def strip_caption(cls, value: str) -> str:
@@ -50,7 +52,7 @@ class ReelSubmissionRequest(BaseModel):
 class ReelSubmissionResponse(BaseModel):
     status: str = "queued"
     capture_id: str
+    user_id: str
     job_status: str = "queued"
     source_url: str
-    capture_mode: CaptureMode
     requested_at: datetime

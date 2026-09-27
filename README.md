@@ -8,13 +8,27 @@ FastAPI starter for RecallGraph.
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-export DATABASE_URL='postgresql+asyncpg://postgres:postgres@localhost:5432/recallgraph'
+cp env.example .env
+# Edit .env and set DATABRICKS_DATABASE_URL to your actual connection URL.
 uvicorn app.main:app --reload
 ```
 
 The API checks the database connection at startup by running `SELECT 1`. If
-`DATABASE_URL` is missing or Postgres is unreachable, startup fails before the
-app accepts requests.
+`DATABRICKS_DATABASE_URL` is missing or Databricks PostgreSQL is unreachable,
+startup fails before the app accepts requests. The connection URL can also use
+the generic `DATABASE_URL` variable if `DATABRICKS_DATABASE_URL` is unset.
+Keep the URL in `.env` and never commit credentials.
+
+### Environment variables
+
+- `DATABRICKS_DATABASE_URL` (required): PostgreSQL connection URL for the
+  `recallgraph` database; include `sslmode=require`.
+- `DATABASE_URL` (optional fallback): used only when
+  `DATABRICKS_DATABASE_URL` is unset.
+- `SQLALCHEMY_ECHO` (optional, defaults to `false`): set to `true` to log SQL
+  statements.
+- `DB_DISABLE_PREPARED_STATEMENTS` (optional, defaults to `false`): set to
+  `true` to disable asyncpg's prepared-statement cache.
 
 The API docs are available at `http://127.0.0.1:8000/docs`.
 
@@ -38,25 +52,39 @@ curl -X POST http://127.0.0.1:8000/api/v1/reels/submit \
         }'
 ```
 
-The API validates the Reel URL and capture mode, creates a queued capture job,
-and returns a `capture_id`.
+The API validates the Reel URL, creates a queued capture job, and returns a
+`capture_id`. It extracts the Reel ID from the URL and checks whether the Reel
+was already submitted, regardless of URL query parameters or `/reel/` versus
+`/reels/` spelling. Duplicate submissions return the existing submission
+response, including its original `capture_id` and current job status, without
+creating another capture. A unique database index on the normalized Reel URL
+also prevents duplicates from concurrent requests.
 
-## Database
+## Databricks PostgreSQL database
 
-Run this in Postgres before starting the API:
+Create or select the `recallgraph` database in Databricks PostgreSQL, then set
+`DATABRICKS_DATABASE_URL` to its connection URL. The database itself must
+already exist; on startup, the app creates the `submissions` table and its
+`source_url` index if they are missing, then verifies that both are present.
+Startup fails with an error if the connection, creation, or verification fails.
+
+After startup, you can confirm the table and index in the connected database:
 
 ```sql
-CREATE TABLE IF NOT EXISTS reel_submissions (
-	capture_id UUID PRIMARY KEY,
-	source_url VARCHAR(2048) NOT NULL,
-	capture_mode VARCHAR(64) NOT NULL CHECK (capture_mode IN ('selected_content')),
-	caption TEXT NOT NULL DEFAULT '',
-	requested_at TIMESTAMPTZ NOT NULL,
-	status VARCHAR(32) NOT NULL DEFAULT 'queued',
-	job_status VARCHAR(32) NOT NULL DEFAULT 'queued',
-	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+SELECT table_name
+FROM information_schema.tables
+WHERE table_schema = current_schema()
+  AND table_name = 'submissions';
 
-CREATE INDEX IF NOT EXISTS ix_reel_submissions_source_url
-	ON reel_submissions (source_url);
+SELECT indexname
+FROM pg_indexes
+WHERE schemaname = current_schema()
+  AND tablename = 'submissions'
+  AND indexname = 'uq_submissions_source_url';
 ```
+
+Use the Databricks PostgreSQL connection URL with `recallgraph` as its database
+path and `sslmode=require`. Both plain
+`postgresql://...` and SQLAlchemy-style `postgresql+asyncpg://...` URLs are
+supported; the app converts the plain PostgreSQL scheme to asyncpg
+automatically.
