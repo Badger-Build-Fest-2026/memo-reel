@@ -1,4 +1,4 @@
-# buildfestproj
+# Memo Reel
 
 ## Agent configuration
 
@@ -40,9 +40,9 @@ REELMIND_LIVE=1 python scripts/verify_agent.py   # same, against the real Gemini
 python scripts/verify_carousel_ui.py             # headless Streamlit AppTest carousel checks
 ```
 
-# RecallGraph
+# Memo Reel
 
-FastAPI starter for RecallGraph.
+FastAPI starter for Memo Reel.
 
 ## Run locally
 
