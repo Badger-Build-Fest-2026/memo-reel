@@ -8,13 +8,15 @@ FastAPI starter for RecallGraph.
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-export SUPABASE_DATABASE_URL='postgresql+asyncpg://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres'
+export DATABRICKS_DATABASE_URL='postgresql://<user>:<password>@<endpoint>.database.<region>.cloud.databricks.com/recallgraph?sslmode=require'
 uvicorn app.main:app --reload
 ```
 
 The API checks the database connection at startup by running `SELECT 1`. If
-`SUPABASE_DATABASE_URL` is missing or Supabase is unreachable, startup fails
-before the app accepts requests.
+`DATABRICKS_DATABASE_URL` is missing or Databricks PostgreSQL is unreachable,
+startup fails before the app accepts requests. The connection URL can also use
+the generic `DATABASE_URL` variable. Keep the URL in an environment variable
+and never commit credentials.
 
 The API docs are available at `http://127.0.0.1:8000/docs`.
 
@@ -41,9 +43,11 @@ curl -X POST http://127.0.0.1:8000/api/v1/reels/submit \
 The API validates the Reel URL, creates a queued capture job, and returns a
 `capture_id`.
 
-## Database
+## Databricks PostgreSQL database
 
-Run this in the Supabase SQL Editor before starting the API:
+Create or select the `recallgraph` database in Databricks PostgreSQL, then run
+the following SQL in that database before starting the API (the app does not
+create the database itself):
 
 ```sql
 CREATE TABLE IF NOT EXISTS submissions (
@@ -63,9 +67,8 @@ CREATE INDEX IF NOT EXISTS ix_submissions_source_url
 	ON submissions (source_url);
 ```
 
-Supabase provisions the Postgres database for the project, so you do not need to
-run `CREATE DATABASE`. For direct connection, use the `db.<project-ref>.supabase.co`
-host on port `5432`. You can paste either Supabase's plain `postgresql://...`
-connection string or the SQLAlchemy-style `postgresql+asyncpg://...` URL into
-`SUPABASE_DATABASE_URL`; the app converts plain `postgresql://...` URLs to
-asyncpg automatically.
+Set `DATABRICKS_DATABASE_URL` to the Databricks PostgreSQL connection URL with
+`recallgraph` as its database path and `sslmode=require`. Both plain
+`postgresql://...` and SQLAlchemy-style `postgresql+asyncpg://...` URLs are
+supported; the app converts the plain PostgreSQL scheme to asyncpg
+automatically.

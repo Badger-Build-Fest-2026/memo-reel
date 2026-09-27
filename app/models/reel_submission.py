@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.session import Base
 
 
-CREATE_SUPABASE_SUBMISSIONS_TABLE_SQL = """
+CREATE_SUBMISSIONS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS submissions (
 	capture_id UUID PRIMARY KEY,
 	user_id VARCHAR(255) NOT NULL,

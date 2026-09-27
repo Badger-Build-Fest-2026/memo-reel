@@ -19,38 +19,43 @@ class Base(DeclarativeBase):
 
 @lru_cache
 def get_engine() -> AsyncEngine:
-    database_url = os.getenv("SUPABASE_DATABASE_URL") or os.getenv("DATABASE_URL")
+    database_url = os.getenv("DATABRICKS_DATABASE_URL") or os.getenv("DATABASE_URL")
     if not database_url:
-        raise RuntimeError("SUPABASE_DATABASE_URL is not configured")
+        raise RuntimeError(
+            "DATABRICKS_DATABASE_URL or DATABASE_URL is not configured"
+        )
 
     url = make_url(database_url)
     if url.drivername == "postgresql":
         url = url.set(drivername="postgresql+asyncpg")
-        database_url = url.render_as_string(hide_password=False)
     elif url.get_backend_name() == "postgresql" and url.drivername != "postgresql+asyncpg":
         raise RuntimeError(
-            "Supabase SQLAlchemy URLs must use the asyncpg driver, for example "
-            "postgresql+asyncpg://postgres:password@db.project-ref.supabase.co:5432/postgres"
+            "PostgreSQL SQLAlchemy URLs must use the asyncpg driver, for example "
+            "postgresql+asyncpg://user:password@host:5432/database"
         )
 
     connect_args = {}
     if url.get_backend_name() == "postgresql":
         connect_args = {"timeout": 10, "server_settings": {"timezone": "UTC"}}
+        sslmode = url.query.get("sslmode")
+        if sslmode is not None:
+            supported_sslmodes = {
+                "allow",
+                "disable",
+                "prefer",
+                "require",
+                "verify-ca",
+                "verify-full",
+            }
+            if not isinstance(sslmode, str) or sslmode not in supported_sslmodes:
+                raise RuntimeError(f"Unsupported PostgreSQL sslmode: {sslmode}")
+            connect_args["ssl"] = sslmode
+            url = url.difference_update_query(["sslmode"])
 
-    is_supabase_host = url.host is not None and "supabase" in url.host
-    is_supabase_pooler = (
-        url.host is not None
-        and "pooler.supabase.com" in url.host
-        and url.port == 6543
-    )
-    if is_supabase_host and os.getenv("SUPABASE_SSL", "true").lower() != "false":
-        connect_args["ssl"] = True
-    if (
-        is_supabase_pooler
-        or os.getenv("DB_DISABLE_PREPARED_STATEMENTS", "").lower() == "true"
-    ):
+    if os.getenv("DB_DISABLE_PREPARED_STATEMENTS", "").lower() == "true":
         connect_args["statement_cache_size"] = 0
 
+    database_url = url.render_as_string(hide_password=False)
     return create_async_engine(
         database_url,
         pool_pre_ping=True,
