@@ -334,19 +334,49 @@ def test_schema_uses_requested_and_automatically_updated_timestamps():
     assert "updated_at=now()" in sql
 
 
-def test_worker_errors_append_locally_without_exception_message(tmp_path, monkeypatch):
+def test_worker_errors_append_safe_diagnostic_and_redact_secrets(tmp_path, monkeypatch):
     log_path = tmp_path / "worker-errors.log"
     monkeypatch.setenv("WORKER_ERROR_LOG", str(log_path))
-    error = ValueError("provider returned private request content")
+    error = ValueError("provider rejected request; API_KEY=secret-value")
 
     log_worker_error("extraction_failed_retry", str(uuid4()), error)
     log_worker_error("extraction_failed_terminal", str(uuid4()), error)
 
     contents = log_path.read_text()
-    assert contents.count("ValueError") == 2
-    assert "private request content" not in contents
+    assert contents.count("error_type=ValueError") == 2
+    assert "provider rejected request" in contents
+    assert "secret-value" not in contents
+    assert "[REDACTED]" in contents
     assert "extraction_failed_retry" in contents
     assert "extraction_failed_terminal" in contents
+    assert not contents.startswith("20")
+
+
+def test_worker_error_log_keeps_gemini_quota_details(tmp_path, monkeypatch):
+    log_path = tmp_path / "worker-errors.log"
+    monkeypatch.setenv("WORKER_ERROR_LOG", str(log_path))
+    error = RuntimeError(
+        "429 RESOURCE_EXHAUSTED. "
+        + "provider detail " * 30
+        + "Quota exceeded for metric: "
+        "generativelanguage.googleapis.com/generate_content_free_tier_requests, "
+        "limit: 20, model: gemini-3.5-flash. "
+        "Please retry in 15.864922552s."
+    )
+
+    log_worker_error(
+        "extraction_failed_retry",
+        str(uuid4()),
+        error,
+        stage="knowledge_pipeline",
+    )
+
+    contents = log_path.read_text()
+    assert "429 RESOURCE_EXHAUSTED" in contents
+    assert "generate_content_free_tier_requests" in contents
+    assert "limit: 20" in contents
+    assert "model: gemini-3.5-flash" in contents
+    assert "15.864922552s" in contents
 
 
 def test_mock_extractor_receives_capture_and_logs_its_id(monkeypatch, caplog):
@@ -396,6 +426,21 @@ def test_video_downloader_saves_capture_scoped_video(tmp_path, monkeypatch):
 
     assert result == downloaded.resolve()
     assert result.read_bytes() == b"fake video"
+
+    def unexpected_download(*_args, **_kwargs):
+        raise AssertionError("Cached video should be reused")
+
+    monkeypatch.setattr(
+        "yt_dlp.YoutubeDL",
+        unexpected_download,
+        raising=False,
+    )
+    cached_result = download_reel_video(
+        "https://www.instagram.com/reel/AbC123/",
+        capture_id,
+        str(tmp_path),
+    )
+    assert cached_result == result
 
 
 def test_live_extractor_downloads_runs_pipeline_and_saves_json_locally(
@@ -449,6 +494,33 @@ def test_live_extractor_downloads_runs_pipeline_and_saves_json_locally(
     assert called["pipeline"]["caption"] == "caption"
     assert called["pipeline"]["reel_id"] == capture_id
     assert Path(result["json_path"]).read_text() == '{"saved": true}'
+
+
+def test_live_extractor_reuses_cached_knowledge_without_redownload_or_pipeline(
+    tmp_path,
+    monkeypatch,
+):
+    capture_id = str(uuid4())
+    capture = SimpleNamespace(capture_id=capture_id)
+    result_dir = tmp_path / "media" / "output" / capture_id
+    result_dir.mkdir(parents=True)
+    result_path = result_dir / "existing.json"
+    result_path.write_text(
+        '{"category":"Technology & Education","title":"Cached"}',
+        encoding="utf-8",
+    )
+
+    def unexpected_call(*_args, **_kwargs):
+        raise AssertionError("Cached knowledge should bypass download and pipeline")
+
+    monkeypatch.setenv("WORKER_EXTRACTION_MODE", "live")
+    monkeypatch.setenv("PIPELINE_MEDIA_DIR", str(tmp_path / "media"))
+    monkeypatch.setattr(extraction, "download_reel_video", unexpected_call)
+    monkeypatch.setattr(extraction, "run_pipeline", unexpected_call)
+
+    result = asyncio.run(run_knowledge_extraction(capture))
+
+    assert result == {"json_path": str(result_path)}
 
 
 def test_worker_ready_reconciles_queued_database_rows(monkeypatch):
