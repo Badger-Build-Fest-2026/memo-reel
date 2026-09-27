@@ -17,8 +17,7 @@ class Base(DeclarativeBase):
     pass
 
 
-@lru_cache
-def get_engine() -> AsyncEngine:
+def create_engine() -> AsyncEngine:
     database_url = os.getenv("DATABRICKS_DATABASE_URL") or os.getenv("DATABASE_URL")
     if not database_url:
         raise RuntimeError(
@@ -62,6 +61,11 @@ def get_engine() -> AsyncEngine:
         echo=os.getenv("SQLALCHEMY_ECHO", "").lower() == "true",
         connect_args=connect_args,
     )
+
+
+@lru_cache
+def get_engine() -> AsyncEngine:
+    return create_engine()
 
 
 @lru_cache

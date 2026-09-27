@@ -1,7 +1,9 @@
 import asyncio
 import logging
+import sys
 from datetime import datetime, timedelta, timezone
-from types import SimpleNamespace
+from pathlib import Path
+from types import ModuleType, SimpleNamespace
 from uuid import UUID, uuid4
 
 import httpx
@@ -15,9 +17,11 @@ from app.db.session import get_db
 from app.models.reel_submission import ReelSubmission
 from app.worker.celery_app import celery_app
 from app.worker.error_logging import log_worker_error
+from app.worker import extraction
 from app.worker.extraction import run_knowledge_extraction
 from app.worker.processing import MAX_ATTEMPTS, process_capture
 from app.worker.startup import enqueue_database_backlog
+from app.services.video_download import download_reel_video
 from app.worker.tasks import (
     MAX_BACKOFF_SECONDS,
     process_capture_task,
@@ -324,10 +328,100 @@ def test_mock_extractor_receives_capture_and_logs_its_id(monkeypatch, caplog):
     monkeypatch.setenv("WORKER_EXTRACTION_MODE", "mock")
     caplog.set_level(logging.INFO, logger="app.worker.extraction")
 
-    result = run_knowledge_extraction(capture)
+    result = asyncio.run(run_knowledge_extraction(capture))
 
     assert result == {"mock": True, "capture_id": capture_id}
     assert capture_id in caplog.text
+
+
+def test_video_downloader_saves_capture_scoped_video(tmp_path, monkeypatch):
+    capture_id = str(uuid4())
+    downloaded = tmp_path / f"{capture_id}.mp4"
+    monkeypatch.delenv("INSTAGRAM_COOKIES_FILE", raising=False)
+
+    class FakeYoutubeDL:
+        def __init__(self, options):
+            self.options = options
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def extract_info(self, _url, download):
+            assert download is True
+            output_path = Path(
+                self.options["outtmpl"].replace("%(ext)s", "mp4")
+            )
+            output_path.write_bytes(b"fake video")
+            return {"filepath": str(output_path)}
+
+    fake_module = ModuleType("yt_dlp")
+    fake_module.YoutubeDL = FakeYoutubeDL
+    monkeypatch.setitem(sys.modules, "yt_dlp", fake_module)
+
+    result = download_reel_video(
+        "https://www.instagram.com/reel/AbC123/",
+        capture_id,
+        str(tmp_path),
+    )
+
+    assert result == downloaded.resolve()
+    assert result.read_bytes() == b"fake video"
+
+
+def test_live_extractor_downloads_runs_pipeline_and_saves_json_locally(
+    tmp_path,
+    monkeypatch,
+):
+    capture_id = str(uuid4())
+    capture = SimpleNamespace(
+        capture_id=capture_id,
+        source_url="https://www.instagram.com/reel/AbC123/",
+        caption="caption",
+        requested_at=datetime(2026, 9, 27, tzinfo=timezone.utc),
+    )
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"video")
+    called = {}
+
+    monkeypatch.setenv("WORKER_EXTRACTION_MODE", "live")
+    monkeypatch.setenv("PIPELINE_MEDIA_DIR", str(tmp_path / "media"))
+    monkeypatch.delenv("INSTAGRAM_COOKIES_FILE", raising=False)
+    def fake_download(source_url, capture_id, output_dir):
+        called["download"] = (source_url, capture_id, output_dir)
+        return video
+
+    monkeypatch.setattr(extraction, "download_reel_video", fake_download)
+
+    async def fake_process_reel(**kwargs):
+        called["pipeline"] = kwargs
+        return SimpleNamespace()
+
+    monkeypatch.setattr(extraction, "run_pipeline", fake_process_reel)
+
+    def fake_save_knowledge(_knowledge, output_dir):
+        output_path = Path(output_dir) / "knowledge.json"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text('{"saved": true}')
+        called["output_dir"] = output_dir
+        return {"json_path": str(output_path), "jsonl_path": None}
+
+    monkeypatch.setattr(extraction, "save_knowledge", fake_save_knowledge)
+
+    result = asyncio.run(run_knowledge_extraction(capture))
+
+    assert called["download"] == (
+        capture.source_url,
+        capture_id,
+        str((tmp_path / "media" / "videos").resolve()),
+    )
+    assert called["pipeline"]["video_path"] == str(video)
+    assert called["pipeline"]["reel_url"] == capture.source_url
+    assert called["pipeline"]["caption"] == "caption"
+    assert called["pipeline"]["reel_id"] == capture_id
+    assert Path(result["json_path"]).read_text() == '{"saved": true}'
 
 
 def test_worker_ready_reconciles_queued_database_rows(monkeypatch):

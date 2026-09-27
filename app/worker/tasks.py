@@ -2,10 +2,11 @@ import asyncio
 import logging
 from uuid import UUID
 
-from app.db.session import get_engine, get_sessionmaker
+from app.db.session import create_engine
 from app.worker.celery_app import celery_app
 from app.worker.error_logging import log_worker_error
 from app.worker.processing import MAX_ATTEMPTS, ProcessOutcome, process_capture
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 logger = logging.getLogger(__name__)
 MAX_RETRIES = MAX_ATTEMPTS - 1
@@ -17,9 +18,14 @@ def retry_delay(attempt_count: int) -> int:
 
 
 async def _process_and_dispose(capture_id: str) -> ProcessOutcome:
-    engine = get_engine()
+    engine = create_engine()
     try:
-        return await process_capture(capture_id, get_sessionmaker())
+        session_factory = async_sessionmaker(
+            bind=engine,
+            autoflush=False,
+            expire_on_commit=False,
+        )
+        return await process_capture(capture_id, session_factory)
     finally:
         await engine.dispose()
 

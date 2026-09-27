@@ -11,3 +11,6 @@ worker-errors.log
 logs
 media
 output
+*cookies*.json
+*.cookies
+cookies.txt

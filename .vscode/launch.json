@@ -11,9 +11,9 @@
         "app.main:app",
         "--reload",
         "--host",
-        "0.0.0.0",
+        "127.0.0.1",
         "--port",
-        "8287"
+        "8000"
       ],
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
