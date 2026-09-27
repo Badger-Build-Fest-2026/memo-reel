@@ -20,3 +20,5 @@ pyvis==0.3.2
 SQLAlchemy==2.1.1
 streamlit==1.40.0
 yt_dlp==2026.8.19
+psycopg==3.3.6
+psycopg-binary==3.3.6
