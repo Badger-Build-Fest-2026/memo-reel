@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import sys
 from datetime import datetime, timedelta, timezone
@@ -14,7 +15,10 @@ from sqlalchemy.dialects.postgresql import dialect
 from app.api.v1.endpoints import reels as reel_endpoints
 from app.api.v1.endpoints.capture_status import get_capture_status
 from app.db.session import get_db
+from app.models.capture_knowledge import CaptureKnowledge
 from app.models.reel_submission import ReelSubmission
+from app.services.storage.database_knowledge import save_knowledge_to_database
+from app.worker import processing as processing_module
 from app.worker.celery_app import celery_app
 from app.worker.error_logging import log_worker_error
 from app.worker import extraction
@@ -210,6 +214,29 @@ def test_worker_transitions_queued_to_processing_to_completed():
     assert database.status == "completed"
     assert database.attempt_count == 1
     assert database.lease_expires_at is None
+
+
+def test_worker_saves_local_json_to_database_before_completing(monkeypatch):
+    database = ProcessingDatabase()
+    persisted = []
+
+    async def extract(_capture):
+        return {"json_path": "/media/output/capture/result.json"}
+
+    async def persist(capture, json_path, session_factory):
+        assert capture.capture_id == database.capture_id
+        assert database.status == "processing"
+        assert json_path == "/media/output/capture/result.json"
+        persisted.append(True)
+
+    monkeypatch.setattr(processing_module, "save_knowledge_to_database", persist)
+    outcome = asyncio.run(
+        process_capture(database.capture_id, database.session_factory, extract)
+    )
+
+    assert persisted == [True]
+    assert outcome.state == "completed"
+    assert database.status == "completed"
 
 
 def test_worker_retries_then_marks_capture_failed():

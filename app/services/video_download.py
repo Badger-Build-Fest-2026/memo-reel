@@ -13,7 +13,7 @@ def download_reel_video(source_url: str, capture_id: str, output_dir: str) -> Pa
         "outtmpl": str(video_dir / f"{capture_id}.%(ext)s"),
         "merge_output_format": "mp4",
         "noplaylist": True,
-        "quiet": False,
+        "quiet": True,
         "no_warnings": True,
         "socket_timeout": 30,
         "retries": 3,

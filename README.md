@@ -110,18 +110,37 @@ Duplicate Reel URLs return the existing submission and do not create another
 capture. The database unique index and conditional worker claim protect against
 duplicate requests and Celery deliveries.
 
-### Job-state migration
+### Database migrations
 
-Apply [20260926_add_capture_job_state.sql](./migrations/20260926_add_capture_job_state.sql)
-to the configured PostgreSQL database. `docker compose up` runs this migration
-automatically in its one-shot `migrate` service before starting the API/worker.
-If you run the app directly on your host, apply it manually. The migration
-preserves `requested_at` as the initial submitted timestamp, adds a
-server-maintained `updated_at`, and removes the obsolete result/error/start/
-created columns. For a plain PostgreSQL URL, run:
+Compose applies both migrations automatically through its one-shot `migrate`
+service before starting the API/worker. If running outside Compose, apply the
+job-state migration and the knowledge table migration manually. The first
+migration preserves `requested_at` as the initial submitted timestamp, adds a
+server-maintained `updated_at`, and removes obsolete columns:
 
 ```sh
 psql "$DATABRICKS_DATABASE_URL" -f migrations/20260926_add_capture_job_state.sql
+psql "$DATABRICKS_DATABASE_URL" -f migrations/20260927_add_capture_knowledge.sql
+```
+
+The `capture_knowledge` table stores one row per capture. `capture_id` is its
+primary key; `user_id`, `requested_at`, `delivered_at`, `obsidian_url`,
+`category`, and `knowledge_json` store the source metadata and the entire JSON
+document. `requested_at` comes from the submitted capture timestamp;
+`delivered_at` is set by PostgreSQL when the generated result is saved and
+refreshed if the same capture is reprocessed.
+`obsidian_url` is nullable until present in the JSON. Reprocessing a capture
+updates its existing row rather than creating a duplicate. The worker keeps the
+local JSON file and does not mark the capture completed unless the database
+upsert succeeds.
+
+Confirm the table and inspect a saved result with:
+
+```sql
+SELECT capture_id, user_id, requested_at, delivered_at, obsidian_url, category
+FROM capture_knowledge
+ORDER BY delivered_at DESC
+LIMIT 10;
 ```
 
 ### Worker behavior and recovery

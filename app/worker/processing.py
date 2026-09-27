@@ -10,6 +10,7 @@ from sqlalchemy import or_, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.reel_submission import ReelSubmission
+from app.services.storage.database_knowledge import save_knowledge_to_database
 from app.worker.error_logging import log_worker_error
 from app.worker.extraction import run_knowledge_extraction
 
@@ -89,7 +90,15 @@ async def process_capture(
     try:
         extraction = (extractor or run_knowledge_extraction)(claimed)
         if inspect.isawaitable(extraction):
-            await extraction
+            extraction = await extraction
+        if isinstance(extraction, dict) and isinstance(
+            extraction.get("json_path"), str
+        ):
+            await save_knowledge_to_database(
+                claimed,
+                extraction["json_path"],
+                session_factory,
+            )
     except Exception as error:
         terminal = attempt_count >= MAX_ATTEMPTS
         state = "failed" if terminal else "queued"
