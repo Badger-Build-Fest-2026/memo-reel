@@ -4,12 +4,16 @@ disk (no need to re-run extraction/transcription).
 
 Usage:
     python build_bundle.py output/results.json output/transcript.json
+    python build_bundle.py output/results.json output/transcript.json \
+        --reel-url "https://instagram.com/reel/xyz" \
+        --caption "5 system design concepts every engineer should know"
 """
 
 import argparse
 import json
 import os
 import sys
+from datetime import datetime, timezone
 
 from app.schemas.frame import FrameExtractionResult
 from app.schemas.transcript import TranscriptResult
@@ -20,6 +24,9 @@ def main():
     parser = argparse.ArgumentParser(description="Merge frame + transcript JSON into a Content Bundle.")
     parser.add_argument("frames_json", help="path to results.json from extract_frames.py")
     parser.add_argument("transcript_json", help="path to transcript.json from extract_transcript.py")
+    parser.add_argument("--reel-url", default=None, help="Instagram reel URL, from the capture layer")
+    parser.add_argument("--caption", default=None, help="Instagram caption text, from the capture layer")
+    parser.add_argument("--saved-at", default=None, help="ISO timestamp; defaults to now")
     parser.add_argument("--output", default="output/content_bundle.json")
     args = parser.parse_args()
 
@@ -29,6 +36,9 @@ def main():
         transcript_result = TranscriptResult(**json.load(f))
 
     bundle = build_content_bundle(frame_result, transcript_result)
+    bundle.reel_url = args.reel_url
+    bundle.caption = args.caption
+    bundle.saved_at = args.saved_at or datetime.now(timezone.utc).isoformat()
 
     print(f"✓ {len(bundle.moments)} moments merged")
     for m in bundle.moments:

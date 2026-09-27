@@ -26,11 +26,15 @@ def main():
     print(f"Sending {len(bundle.moments)} frames + transcript to {args.model} ...")
     knowledge = extract_structured_knowledge(bundle, model_name=args.model)
 
-    print(f"\n✓ Topic: {knowledge.topic}")
-    print(f"✓ Concepts: {', '.join(knowledge.concepts)}")
-    if knowledge.resources:
-        print(f"✓ Resources: {', '.join(knowledge.resources)}")
+    print(f"\n✓ Title: {knowledge.title}")
+    print(f"✓ Category: {knowledge.category} / {knowledge.subcategory}")
     print(f"✓ Summary: {knowledge.summary}")
+    if knowledge.recipe:
+        print(f"✓ Recipe: {len(knowledge.recipe.ingredients)} ingredients, {len(knowledge.recipe.steps)} steps")
+    if knowledge.product_list:
+        print(f"✓ Products: {', '.join(p.name for p in knowledge.product_list)}")
+    if knowledge.concepts:
+        print(f"✓ Concepts: {', '.join(knowledge.concepts.concepts)}")
     print(f"✓ Evidence items: {len(knowledge.evidence)}")
     for e in knowledge.evidence:
         print(f"    [{e.timestamp:>6.2f}s] {e.claim}  ({e.frame_path})")
