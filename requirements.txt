@@ -1,4 +1,5 @@
 fastapi==0.141.1
+uvicorn>=0.41.0
 faster_whisper==1.2.1
 numpy==2.5.3
 opencv_python==5.0.0.93

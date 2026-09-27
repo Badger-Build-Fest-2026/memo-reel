@@ -53,34 +53,38 @@ curl -X POST http://127.0.0.1:8000/api/v1/reels/submit \
 ```
 
 The API validates the Reel URL, creates a queued capture job, and returns a
-`capture_id`.
+`capture_id`. It extracts the Reel ID from the URL and checks whether the Reel
+was already submitted, regardless of URL query parameters or `/reel/` versus
+`/reels/` spelling. Duplicate submissions return the existing submission
+response, including its original `capture_id` and current job status, without
+creating another capture. A unique database index on the normalized Reel URL
+also prevents duplicates from concurrent requests.
 
 ## Databricks PostgreSQL database
 
-Create or select the `recallgraph` database in Databricks PostgreSQL, then run
-the following SQL in that database before starting the API (the app does not
-create the database itself):
+Create or select the `recallgraph` database in Databricks PostgreSQL, then set
+`DATABRICKS_DATABASE_URL` to its connection URL. The database itself must
+already exist; on startup, the app creates the `submissions` table and its
+`source_url` index if they are missing, then verifies that both are present.
+Startup fails with an error if the connection, creation, or verification fails.
+
+After startup, you can confirm the table and index in the connected database:
 
 ```sql
-CREATE TABLE IF NOT EXISTS submissions (
-	capture_id UUID PRIMARY KEY,
-	user_id VARCHAR(255) NOT NULL,
-	account_name VARCHAR(255) NOT NULL,
-	source_url VARCHAR(2048) NOT NULL,
-	hashtags TEXT NOT NULL DEFAULT '',
-	caption TEXT NOT NULL DEFAULT '',
-	requested_at TIMESTAMPTZ NOT NULL,
-	status VARCHAR(32) NOT NULL DEFAULT 'queued',
-	job_status VARCHAR(32) NOT NULL DEFAULT 'queued',
-	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+SELECT table_name
+FROM information_schema.tables
+WHERE table_schema = current_schema()
+  AND table_name = 'submissions';
 
-CREATE INDEX IF NOT EXISTS ix_submissions_source_url
-	ON submissions (source_url);
+SELECT indexname
+FROM pg_indexes
+WHERE schemaname = current_schema()
+  AND tablename = 'submissions'
+  AND indexname = 'uq_submissions_source_url';
 ```
 
-Set `DATABRICKS_DATABASE_URL` to the Databricks PostgreSQL connection URL with
-`recallgraph` as its database path and `sslmode=require`. Both plain
+Use the Databricks PostgreSQL connection URL with `recallgraph` as its database
+path and `sslmode=require`. Both plain
 `postgresql://...` and SQLAlchemy-style `postgresql+asyncpg://...` URLs are
 supported; the app converts the plain PostgreSQL scheme to asyncpg
 automatically.

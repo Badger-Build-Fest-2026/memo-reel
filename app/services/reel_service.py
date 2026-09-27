@@ -1,15 +1,35 @@
 import uuid
 
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.reel_submission import ReelSubmission
 from app.schemas.reel import ReelSubmissionRequest, ReelSubmissionResponse
 
 
+def submission_response(submission: ReelSubmission) -> ReelSubmissionResponse:
+    return ReelSubmissionResponse(
+        status=submission.status,
+        capture_id=submission.capture_id,
+        user_id=submission.user_id,
+        job_status=submission.job_status,
+        source_url=submission.source_url,
+        requested_at=submission.requested_at,
+    )
+
+
 async def submit_reel(
     request: ReelSubmissionRequest,
     db: AsyncSession,
 ) -> ReelSubmissionResponse:
+    canonical_url = f"https://www.instagram.com/reel/{request.reel_id}/"
+    existing_submission = await db.scalar(
+        select(ReelSubmission).where(ReelSubmission.source_url == canonical_url)
+    )
+    if existing_submission is not None:
+        return submission_response(existing_submission)
+
     submission = ReelSubmission(
         capture_id=str(uuid.uuid4()),
         user_id=request.user_id,
@@ -22,14 +42,16 @@ async def submit_reel(
         job_status="queued",
     )
     db.add(submission)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        existing_submission = await db.scalar(
+            select(ReelSubmission).where(ReelSubmission.source_url == canonical_url)
+        )
+        if existing_submission is not None:
+            return submission_response(existing_submission)
+        raise
     await db.refresh(submission)
 
-    return ReelSubmissionResponse(
-        status=submission.status,
-        capture_id=submission.capture_id,
-        user_id=submission.user_id,
-        job_status=submission.job_status,
-        source_url=submission.source_url,
-        requested_at=submission.requested_at,
-    )
+    return submission_response(submission)

@@ -2,8 +2,8 @@ import os
 from collections.abc import AsyncGenerator
 from functools import lru_cache
 
-from sqlalchemy import text
-from sqlalchemy.engine import make_url
+from sqlalchemy import inspect, text
+from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -81,3 +81,38 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def check_db_connection() -> None:
     async with get_engine().connect() as connection:
         await connection.execute(text("SELECT 1"))
+
+
+async def initialize_database() -> None:
+    from app.models.reel_submission import ReelSubmission
+
+    table = ReelSubmission.__table__
+
+    def create_and_verify_schema(connection: Connection) -> None:
+        table.create(connection, checkfirst=True)
+        for index in table.indexes:
+            index.create(connection, checkfirst=True)
+
+        inspector = inspect(connection)
+        if not inspector.has_table(table.name, schema=table.schema):
+            raise RuntimeError(
+                f"Database initialization verification failed: "
+                f"table {table.name!r} was not created"
+            )
+
+        existing_indexes = {
+            index["name"]
+            for index in inspector.get_indexes(table.name, schema=table.schema)
+        }
+        missing_indexes = {
+            index.name for index in table.indexes if index.name not in existing_indexes
+        }
+        if missing_indexes:
+            raise RuntimeError(
+                "Database initialization verification failed: "
+                f"table {table.name!r} is missing index(es): "
+                f"{', '.join(sorted(missing_indexes))}"
+            )
+
+    async with get_engine().begin() as connection:
+        await connection.run_sync(create_and_verify_schema)

@@ -36,6 +36,13 @@ class ReelSubmissionRequest(BaseModel):
             )
         return f"https://www.instagram.com/reel/{match.group(1)}/"
 
+    @property
+    def reel_id(self) -> str:
+        match = _INSTAGRAM_REEL_URL.fullmatch(self.source_url)
+        if match is None:
+            raise RuntimeError("Validated Reel URL has no Reel identifier")
+        return match.group(1)
+
     @field_validator("caption")
     @classmethod
     def strip_caption(cls, value: str) -> str:
