@@ -43,7 +43,7 @@ async def process_reel(
     video_path: str,
     reel_url: str | None = None,
     caption: str | None = None,
-    saved_at: str | None = None,
+    timestamp: str | None = None,
     reel_id: str | None = None,
     output_base_dir: str = "output",
     max_frames: int = 15,
@@ -75,7 +75,7 @@ async def process_reel(
     bundle = build_content_bundle(frame_result, transcript_result)
     bundle.reel_url = reel_url
     bundle.caption = caption
-    bundle.saved_at = saved_at or datetime.now(timezone.utc).isoformat()
+    bundle.timestamp = timestamp or datetime.now(timezone.utc).isoformat()
 
     # The Gemini SDK call is also a blocking network call - offload it
     # too so it doesn't block the event loop while waiting on the API.

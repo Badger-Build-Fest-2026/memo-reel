@@ -38,7 +38,7 @@ def main():
     bundle = build_content_bundle(frame_result, transcript_result)
     bundle.reel_url = args.reel_url
     bundle.caption = args.caption
-    bundle.saved_at = args.saved_at or datetime.now(timezone.utc).isoformat()
+    bundle.timestamp = args.timestamp or datetime.now(timezone.utc).isoformat()
 
     print(f"✓ {len(bundle.moments)} moments merged")
     for m in bundle.moments:

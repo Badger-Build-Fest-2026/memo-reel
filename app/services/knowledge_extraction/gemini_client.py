@@ -183,6 +183,6 @@ def extract_structured_knowledge(
         **generated.model_dump(),
         reel_url=bundle.reel_url,
         caption=bundle.caption,
-        saved_at=bundle.saved_at,
+        timestamp=bundle.timestamp,
         transcript=bundle.full_transcript,
     )

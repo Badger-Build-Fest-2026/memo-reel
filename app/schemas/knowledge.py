@@ -13,7 +13,7 @@ the Content Bundle - that provenance guarantee doesn't change.
 
 GeneratedKnowledge vs ReelKnowledge: Gemini fills GeneratedKnowledge
 (everything except the Instagram metadata, which it has no business
-inventing). We then stitch reel_url/caption/saved_at in from the
+inventing). We then stitch reel_url/caption/timestamp in from the
 Content Bundle afterward to build the final ReelKnowledge. Passing
 GeneratedKnowledge as the API's response_schema makes Gemini's output
 STRUCTURALLY conform to this shape (server-side), not just prompted
@@ -99,6 +99,6 @@ class ReelKnowledge(GeneratedKnowledge):
     """Final output: GeneratedKnowledge + Instagram metadata stitched in."""
     reel_url: str | None = None
     caption: str | None = None
-    saved_at: str | None = None
+    timestamp: str | None = None
     transcript: str | None = None
     obsidian_url: str | None = None  # filled in later, once the Obsidian note is created
