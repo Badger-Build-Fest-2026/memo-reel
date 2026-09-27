@@ -20,7 +20,7 @@
   "host_permissions": [
     "https://www.instagram.com/*",
     "https://recall-graph.onrender.com/*",
-    "https://localhost:8000/*"
+    "http://127.0.0.1:8000/*"
   ],
   "content_scripts": [
     {

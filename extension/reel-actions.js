@@ -5,8 +5,8 @@
 // redirecting to your Streamlit dashboard.
 // ---------------------------------------------------------
 
-// const RS_BACKEND_URL = "https://recall-graph.onrender.com/api/v1/reels/submit";
-const RS_BACKEND_URL = "https://localhost:8000/api/v1/reels/submit";
+// The local FastAPI server is HTTP unless you explicitly configure a TLS proxy.
+const RS_BACKEND_URL = "http://127.0.0.1:8000/api/v1/reels/submit";
 const RS_DASHBOARD_URL = "https://your-streamlit-app.streamlit.app"; // <-- set your real URL
 
 const RSReelActions = (function () {
@@ -42,6 +42,14 @@ const RSReelActions = (function () {
       const reelData = extractReelDataFromPage(userId);
       if (!reelData) {
         throw new Error("Could not extract Reel data.");
+      }
+      if (
+        !reelData.account_name ||
+        reelData.account_name.toLowerCase() === "profile"
+      ) {
+        throw new Error(
+          "Could not identify the Reel author's username. Refresh the Reel and try again."
+        );
       }
 
       RSDrawerEffects.setStatus("Sending to server...", null);
