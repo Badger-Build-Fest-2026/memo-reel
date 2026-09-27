@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+from uuid import UUID
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -56,3 +57,4 @@ class ReelSubmissionResponse(BaseModel):
     job_status: str = "queued"
     source_url: str
     requested_at: datetime
+    updated_at: datetime

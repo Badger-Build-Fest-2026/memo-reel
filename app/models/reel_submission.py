@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, String, Text, func
+from sqlalchemy import DateTime, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,7 +18,9 @@ CREATE TABLE IF NOT EXISTS submissions (
 	requested_at TIMESTAMPTZ NOT NULL,
 	status VARCHAR(32) NOT NULL DEFAULT 'queued',
 	job_status VARCHAR(32) NOT NULL DEFAULT 'queued',
-	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	attempt_count INTEGER NOT NULL DEFAULT 0,
+	lease_expires_at TIMESTAMPTZ,
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS ix_submissions_source_url
@@ -26,12 +28,18 @@ CREATE INDEX IF NOT EXISTS ix_submissions_source_url
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_submissions_source_url
 	ON submissions (source_url);
+
+CREATE INDEX IF NOT EXISTS ix_submissions_job_reconcile
+	ON submissions (status, lease_expires_at);
 """
 
 
 class ReelSubmission(Base):
     __tablename__ = "submissions"
-    __table_args__ = (Index("uq_submissions_source_url", "source_url", unique=True),)
+    __table_args__ = (
+        Index("uq_submissions_source_url", "source_url", unique=True),
+        Index("ix_submissions_job_reconcile", "status", "lease_expires_at"),
+    )
 
     capture_id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -45,8 +53,19 @@ class ReelSubmission(Base):
     )
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
     job_status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
-    created_at: Mapped[datetime] = mapped_column(
+    attempt_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
+        onupdate=func.now(),
     )
