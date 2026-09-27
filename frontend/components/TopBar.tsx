@@ -20,7 +20,7 @@ export default function TopBar({ activeCategory, onSelectCategory }: Props) {
   return (
     <header className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-8 py-6">
       <h1 className="font-display italic text-2xl tracking-tight text-paper">
-        RecallGraph
+        MemoReel
       </h1>
 
       <div className="flex flex-wrap justify-end gap-2 max-w-xl">

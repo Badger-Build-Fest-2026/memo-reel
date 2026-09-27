@@ -50,12 +50,10 @@ class ReelGraphEngine:
         self.reels: Dict[str, dict] = {}
 
         import os
-        db_url = data_source if (isinstance(data_source, str) and data_source.startswith("postgres")) else os.getenv("LAKEBASE_DATABASE_URL")
+        db_url = data_source if (isinstance(data_source, str) and data_source.startswith("postgres")) else os.getenv("DATABRICKS_DATABASE_URL")
 
         if db_url and db_url.startswith("postgres"):
             self.load_from_lakebase(db_url)
-        elif isinstance(data_source, (str, Path)):
-            self.load_from_jsonl(data_source)
         elif isinstance(data_source, list):
             self._populate_graph(data_source)
 

@@ -2,11 +2,22 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 import { askChat } from "@/lib/api";
 import type { ChatMessage } from "@/lib/types";
 
 interface Props {
   userId: string;
+}
+
+// The agent writes Obsidian-style [[Concept]] wikilinks, which aren't
+// real markdown syntax - react-markdown would just show the literal
+// brackets. Turn them into a styled span (colored like the graph's
+// concept nodes) before handing the string to the markdown renderer.
+function preprocessWikilinks(text: string): string {
+  return text.replace(/\[\[([^\]]+)\]\]/g, '<span class="wikilink">$1</span>');
 }
 
 export default function ChatDock({ userId }: Props) {
@@ -32,10 +43,7 @@ export default function ChatDock({ userId }: Props) {
 
     try {
       const res = await askChat(query, userId);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: res.answer, sources: res.sources },
-      ]);
+      setMessages((prev) => [...prev, { role: "assistant", content: res.answer }]);
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -47,12 +55,12 @@ export default function ChatDock({ userId }: Props) {
   }
 
   return (
-    <div className="absolute bottom-6 left-6 z-20 w-[400px] max-w-[calc(100vw-3rem)]">
+    <div className="absolute bottom-6 left-6 z-20 w-[440px] max-w-[calc(100vw-3rem)]">
       <AnimatePresence>
         {open && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 420 }}
+            animate={{ opacity: 1, height: 460 }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.25, ease: "easeOut" }}
             className="glass-panel rounded-2xl mb-3 overflow-hidden flex flex-col"
@@ -60,37 +68,30 @@ export default function ChatDock({ userId }: Props) {
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
               {messages.length === 0 && (
                 <p className="text-dust text-sm">
-                  Ask about anything you've saved — "what was that sandwich recipe" or
-                  "which reels mentioned Redis".
+                  Ask about anything you've saved — "prep me for a data science interview"
+                  or "what meal prep recipes did I save".
                 </p>
               )}
               {messages.map((m, i) => (
-                <div key={i}>
-                  <div
-                    className={`text-sm leading-relaxed ${
-                      m.role === "user" ? "text-paper" : "text-paper/90"
-                    }`}
-                  >
-                    <span className="text-xs uppercase tracking-wide text-dust block mb-1">
-                      {m.role === "user" ? "You" : "RecallGraph"}
-                    </span>
-                    {m.content}
-                  </div>
-                  {m.sources && m.sources.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {m.sources.map((s) => (
-                        <span
-                          key={s.id}
-                          className="text-[11px] px-2 py-1 rounded-full border border-nebula/40 text-nebula"
-                        >
-                          {s.title}
-                        </span>
-                      ))}
+                <div key={i} className="text-sm leading-relaxed">
+                  <span className="text-xs uppercase tracking-wide text-dust block mb-1">
+                    {m.role === "user" ? "You" : "MemoReel"}
+                  </span>
+                  {m.role === "user" ? (
+                    <span className="text-paper">{m.content}</span>
+                  ) : (
+                    <div className="chat-markdown text-paper/90">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        rehypePlugins={[rehypeRaw]}
+                      >
+                        {preprocessWikilinks(m.content)}
+                      </ReactMarkdown>
                     </div>
                   )}
                 </div>
               ))}
-              {loading && <p className="text-dust text-sm italic">Searching your reels…</p>}
+              {loading && <p className="text-dust text-sm italic">Thinking…</p>}
               <div ref={threadEndRef} />
             </div>
           </motion.div>

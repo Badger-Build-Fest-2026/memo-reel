@@ -11,6 +11,9 @@
   "dependencies": {
     "3d-force-graph": "^1.73.4",
     "d3-force-3d": "^3.0.6",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "rehype-raw": "^7.0.0",
     "framer-motion": "^11.11.9",
     "next": "^15.3.9",
     "react": "^18.3.1",

@@ -16,7 +16,7 @@ const plexSans = IBM_Plex_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "RecallGraph",
+  title: "MemoReel",
   description: "Turn saved reels into a searchable, connected knowledge graph.",
 };
 
