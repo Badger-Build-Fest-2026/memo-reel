@@ -9,7 +9,7 @@ from app.worker.error_logging import configure_worker_error_logging
 load_dotenv()
 
 celery_app = Celery(
-    "recallgraph",
+    "MemoReel",
     broker=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
 )
 celery_app.conf.update(

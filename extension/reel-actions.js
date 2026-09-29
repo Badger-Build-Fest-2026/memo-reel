@@ -7,7 +7,7 @@
 
 // The local FastAPI server is HTTP unless you explicitly configure a TLS proxy.
 const RS_BACKEND_URL = "http://127.0.0.1:8000/api/v1/reels/submit";
-const RS_DASHBOARD_URL = "https://your-streamlit-app.streamlit.app"; // <-- set your real URL
+const RS_DASHBOARD_URL = "http://localhost:3000/?user=9041096b-abec-4d51-8d80-7d37a969be4f"; // <-- set your real URL
 
 const RSReelActions = (function () {
   function getOrCreateUserId() {
