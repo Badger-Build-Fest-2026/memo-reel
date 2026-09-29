@@ -58,10 +58,10 @@ flowchart LR
 - **[Ananya Datta (@ananyadatta1)](https://github.com/ananyadatta1):** Built the
     GraphRAG AI assistant, including Lakebase querying in Databricks and
     MCP-powered web enrichment for more useful answers.
-- **[Jayanth (@XElJayX)](https://github.com/XElJayX):** Built the multimodal
+- **[Jayanth Ravimurgan (@XElJayX)](https://github.com/XElJayX):** Built the multimodal
     extraction pipeline and structured JSON content consumed by the AI assistant
     and Obsidian workflows.
-- **[Preeth (@preeth04)](https://github.com/preeth04):** Built the backend services and job-scheduling pipeline using
+- **[Preeth Gunasekaran (@preeth04)](https://github.com/preeth04):** Built the backend services and job-scheduling pipeline using
     Redis, Celery, and the supporting API workflows.
 - **[Sanika Gadkari (@sankg05)](https://github.com/sankg05):** Built the
     frontend experience and Chrome extension integration.
