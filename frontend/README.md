@@ -42,15 +42,12 @@ use the same value in both places to see your own reels.
 
 ## Backend requirements
 
-This expects two endpoints from your FastAPI backend (see the
-`recallgraph_backend_additions.zip` delivered alongside this):
+This expects two endpoints from the FastAPI backend in this repository:
 
 - `GET /api/v1/graph?user_id=...` -> `{nodes: [...], edges: [...]}`
 - `POST /api/v1/chat` with `{query, user_id}` -> `{answer, sources: [...]}`
 
-Both need `api_router.include_router(...)` added in your
-`app/api/v1/api.py` - see the comments at the top of
-`app/api/v1/endpoints/chat.py` and `graph.py` for the exact lines to add.
+Both routes are registered in `app/api/v1/api_endpoints.py`.
 
 Also needs CORS enabled on the backend so the Next.js dev server
 (localhost:3000) can call it (localhost:8000) - add to your `main.py`:

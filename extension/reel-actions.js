@@ -2,7 +2,7 @@
 // reel-actions.js
 // All logic that talks to the outside world: extracting reel
 // data from the page, sending it to your FastAPI backend, and
-// redirecting to your Streamlit dashboard.
+// redirecting to your Memo Reel dashboard.
 // ---------------------------------------------------------
 
 // The local FastAPI server is HTTP unless you explicitly configure a TLS proxy.

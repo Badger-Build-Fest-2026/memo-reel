@@ -14,7 +14,7 @@ import time
 from typing import Any, Dict, List, Optional
 import warnings
 from agent.graph_engine import ReelGraphEngine
-from agent.mcb_web_fetcher import enrich_from_web
+from agent.mcp_web_fetcher import enrich_from_web
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import tool

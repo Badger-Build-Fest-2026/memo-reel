@@ -2,7 +2,7 @@
 GET /graph?user_id=... - returns the knowledge graph for the frontend
 to render, built from the capture_knowledge table.
 
-Wire this into your existing router (app/api/v1/api.py):
+Wire this into the router in app/api/v1/api_endpoints.py:
 
     from app.api.v1.endpoints.graph import router as graph_router
     api_router.include_router(graph_router, prefix="/graph", tags=["graph"])

@@ -8,7 +8,7 @@ react-agent loop: multiple tool calls, possibly external URL fetches
 via MCP, multiple Gemini calls) - it's offloaded to a thread via
 asyncio.to_thread so it doesn't block the event loop while running.
 
-Wire this into your existing router (app/api/v1/api.py):
+Wire this into the router in app/api/v1/api_endpoints.py:
 
     from app.api.v1.endpoints.chat import router as chat_router
     api_router.include_router(chat_router, prefix="/chat", tags=["chat"])
