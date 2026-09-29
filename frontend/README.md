@@ -1,4 +1,4 @@
-# RecallGraph Frontend
+# MemoReel Frontend
 
 Next.js app: a 3D knowledge graph of your saved reels, plus a chat dock
 that queries them via RAG.

@@ -1,4 +1,4 @@
-name: recallgraph
+name: MemoReel
 
 x-app: &app
   build:

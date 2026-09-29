@@ -109,6 +109,7 @@ def _find_amazon_links(client, products: list[ProductItem], model_name: str) -> 
     link lookup.
     """
     from google.genai import types
+    model_name = "gemini-3.5-flash-lite"  # search grounding is only supported on this model
 
     try:
         product_names = "\n".join(f"- {p.name}: {p.description}" for p in products)
@@ -152,7 +153,7 @@ def extract_structured_knowledge(
 ) -> ReelKnowledge:
     from google import genai
     from google.genai import types
-
+    model_name = "gemini-3.5-flash-lite" 
     api_key = api_key or os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise ValueError(
@@ -173,8 +174,8 @@ def extract_structured_knowledge(
             ),
         )
     except Exception as error:
-        print("Gemini API call failed:", str(error))
-        raise RuntimeError("Gemini knowledge extraction failed") from error
+        print("Gemini API call failed:", str(model_name), str(error))
+        raise RuntimeError("Gemini knowledge extraction failed"+str(model_name)) from error
 
     # response.parsed is already a validated GeneratedKnowledge instance
     # when response_schema is a Pydantic model - no manual json.loads needed.

@@ -40,9 +40,9 @@ REELMIND_LIVE=1 python scripts/verify_agent.py   # same, against the real Gemini
 python scripts/verify_carousel_ui.py             # headless Streamlit AppTest carousel checks
 ```
 
-# Memo Reel
+# MemoReel
 
-FastAPI starter for Memo Reel.
+FastAPI starter for MemoReel.
 
 ## Run locally
 
